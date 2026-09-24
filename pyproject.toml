@@ -1,0 +1,87 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "invisible_puppeteer"
+version = "0.1.0"
+description = "pyppeteer's API for a patched Firefox with a deterministic stealth profile."
+readme = "README.md"
+requires-python = ">=3.11"
+# ⛔ TWO LICENSES, for the same reason invisible_playwright declares two:
+# `_juggler/injected.js` (selector engines and actionability, run in the page)
+# and `_juggler/keylayout.py` were extracted from Playwright's driver bundle,
+# which is Apache-2.0, and came here with the rest of invisible_playwright's
+# engine. See THIRD_PARTY.md. The pyppeteer API is re-implemented, not vendored:
+# no pyppeteer code is redistributed.
+license = "MIT AND Apache-2.0"
+authors = [{ name = "feder-cr", email = "85809106+feder-cr@users.noreply.github.com" }]
+keywords = ["puppeteer", "pyppeteer", "firefox", "stealth", "anti-detect", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Topic :: Internet :: WWW/HTTP :: Browsers",
+    "Typing :: Typed",
+]
+dependencies = [
+    # The same exact pin invisible_playwright carries, for the same reasons -
+    # see the long comment on that line in its pyproject. It is the ONE place
+    # this package writes the expected core version: `_pin.py` reads it back
+    # out of this distribution's own metadata at import time.
+    "invisible_core==34.29.0",
+    # ⛔ NO `pyppeteer` AND NO `playwright`. The pyppeteer API is implemented here
+    # on top of the engine; installing pyppeteer would not break anything, and
+    # that is the problem - both would coexist and one of them would simply
+    # never run.
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "build>=1", "pytest-rerunfailures>=14", "pytest-timeout>=2", "pytest-xdist>=3"]
+
+[tool.pytest.ini_options]
+# The same marker vocabulary as invisible_core and invisible_playwright.
+markers = [
+    "unit: pure logic - no I/O, no network, no subprocess, no browser",
+    "integration: several modules together, in process - no network, no browser",
+    "e2e: needs something outside this process - the network, the real patched binary, or a display",
+    "slow: builds a wheel or an sdist - opt-in only",
+    "linux_only: requires Linux",
+]
+addopts = "-m 'not slow and not e2e' --strict-markers"
+# The suite tests THIS checkout, not whatever an editable install points at.
+pythonpath = ["src"]
+
+[project.scripts]
+invisible-puppeteer = "invisible_puppeteer.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/invisible_puppeteer"]
+exclude = ["*.bak", "*-bak"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/invisible_puppeteer", "tests", "README.md", "LICENSE", "LICENSE-APACHE", "THIRD_PARTY.md", "pyproject.toml"]
+
+# Which pre-push gates this repository wants, as in invisible_playwright:
+# `.githooks/pre-push` hands over to invisible_core.hooks, and this block is
+# the only per-repo part of the policy.
+[tool.invisible.hooks]
+pytest = true
+pin = true
+release_tags = ["v"]
+
+# The per-repository half of the shared language gate
+# (`python -m invisible_core.english`). `injected.js` was extracted from the
+# upstream bundle, as in invisible_playwright; our own patches inside it are
+# found by the marker they carry.
+[tool.invisible.english]
+excluded = [
+    "src/invisible_puppeteer/_juggler/injected.js",
+]
+marker = "MODIFIED by invisible_playwright"
