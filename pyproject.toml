@@ -26,6 +26,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Testing",
     "Topic :: Internet :: WWW/HTTP :: Browsers",
     "Typing :: Typed",
@@ -41,6 +42,11 @@ dependencies = [
     # that is the problem - both would coexist and one of them would simply
     # never run.
 ]
+
+[project.urls]
+Homepage = "https://github.com/feder-cr/invisible_puppeteer"
+Repository = "https://github.com/feder-cr/invisible_puppeteer"
+Changelog = "https://github.com/feder-cr/invisible_puppeteer/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=7", "build>=1", "pytest-rerunfailures>=14", "pytest-timeout>=2", "pytest-xdist>=3"]

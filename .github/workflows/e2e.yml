@@ -1,0 +1,53 @@
+name: e2e
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
+  pull_request:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The published engine, driven through this package's API, under a virtual
+# display. Playwright is installed only as a SYSTEM TOOL, for `install-deps`,
+# which knows the libraries Firefox needs on this image; this package never
+# imports it.
+jobs:
+  core-on-index:
+    uses: ./.github/workflows/core-on-index.yml
+
+  e2e:
+    name: e2e (linux, xvfb)
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the package + test deps (+ Playwright ONLY as a system tool)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[dev]"
+          python -m pip install "playwright==1.61.0"
+      - name: System deps (xvfb + Firefox runtime libs)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          sudo "$(which python)" -m playwright install-deps firefox
+      - name: Fetch the published firefox binary
+        run: echo "FF=$(python -m invisible_puppeteer.cli fetch | tail -1)" >> "$GITHUB_ENV"
+      - name: Run the full e2e suite under a virtual display
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: xvfb-run -a python -u scripts/run_e2e.py "$FF"

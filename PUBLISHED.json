@@ -1,0 +1,5 @@
+{
+  "comment": "Published releases of invisible-puppeteer, one entry per version that actually reached the index. Written only by `python -m invisible_core.release record`. Never hand-edited, and never shipped inside the package - a ledger that ships would invalidate the digest it certifies.",
+  "released": [],
+  "schema": 1
+}

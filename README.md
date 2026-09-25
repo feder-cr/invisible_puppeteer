@@ -5,9 +5,12 @@ Change the import, keep the script.
 
 ```bash
 uv venv
-uv pip install -e .
+uv pip install invisible-puppeteer
 uv run invisible-puppeteer fetch
 ```
+
+Requires Python 3.11 or newer. Windows x86_64 and ARM64 (the x86_64 engine,
+under Windows' own emulation), Linux x86_64 and arm64.
 
 ```python
 import asyncio
@@ -33,6 +36,8 @@ browser = await launch(
 ```
 
 ```bash
+git clone https://github.com/feder-cr/invisible_puppeteer && cd invisible_puppeteer
+uv venv && uv pip install -e ".[dev]"
 uv run pytest -q                      # unit
 uv run pytest -q -m e2e               # against the real browser
 ```

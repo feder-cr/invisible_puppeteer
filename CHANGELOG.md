@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.1.0 - unreleased
+## [0.1.0] - 2026-09-25
 
-First version: a replica of invisible_playwright 0.25.5 with pyppeteer's contract.
+First version: a replica of invisible_playwright 0.25.7 with pyppeteer's contract.
 
 - `launch()` starts the same patched Firefox with the same profile, proxy,
   geography and hidden-surface handling as `InvisiblePlaywright`, and drives it

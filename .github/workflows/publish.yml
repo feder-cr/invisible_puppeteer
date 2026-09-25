@@ -1,0 +1,337 @@
+name: publish
+
+# Publishing invisible-puppeteer from a tag, with no long-lived credential anywhere. Derived
+# from invisible_playwright's publish.yml; its comments there carry the history.
+#
+# The credential is the `pypi` GitHub Environment's OIDC trust relationship.
+# Only `upload` names that environment, and it `needs: gate`.
+#
+# BEFORE THE FIRST RUN, on PyPI: add a PENDING publisher (the project does not
+# exist yet) with project `invisible-puppeteer`, owner `feder-cr`, repository `invisible_puppeteer`,
+# workflow `publish.yml`, environment `pypi`. Until then the upload fails with
+# `invalid-publisher`, which is the correct failure.
+#
+# THE FIRST RELEASE IS DISPATCHED, NOT TAGGED. The pre-push hook runs the
+# publish gate on a release tag without `--first-release`, so it refuses the
+# very first tag of a project. The first version therefore goes out with
+# `workflow_dispatch` on main, after `python -m invisible_core.release check
+# --first-release --verify-index` has been run by hand; the tag is pushed after
+# the ledger entry is merged, when the hook finds the version already published
+# and has nothing to do.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Asked of the INDEX, first, because a tag can legitimately name a version that
+  # is already published: a tag backfilled for a hand-published release, a tag
+  # re-pushed, a re-run of this workflow. In all of those there is nothing to do
+  # and nothing wrong, and reaching twine would fail on a filename the index has
+  # already served - a red run for a situation that is fine.
+  already-published:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.probe.outputs.present }}
+      version: ${{ steps.probe.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: probe
+        shell: bash
+        run: |
+          VERSION="$(grep -m1 '^version = ' pyproject.toml | cut -d'"' -f2)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/invisible-puppeteer/$VERSION/json")
+          case "$CODE" in
+            200) echo "present=yes" >> "$GITHUB_OUTPUT"
+                 echo "::notice::invisible-puppeteer $VERSION is already on the index. No-op, not a failure." ;;
+            404) echo "present=no"  >> "$GITHUB_OUTPUT" ;;
+            *)   echo "the index answered $CODE for $VERSION, which is neither present" >&2
+                 echo "nor absent. Refusing rather than guessing." >&2
+                 exit 1 ;;
+          esac
+
+  gate:
+    needs: already-published
+    if: needs.already-published.outputs.present != 'yes'
+    runs-on: ubuntu-latest
+    # `checks: read` for the step below, which asks what the e2e concluded on
+    # this commit. Job level rather than workflow level: no other job needs it.
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: the tag names the version being built
+        # A tag pointing at a different version publishes something nobody asked
+        # for, under a name that says otherwise. Skipped on workflow_dispatch,
+        # where there is no tag to compare against.
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          HAVE="${{ needs.already-published.outputs.version }}"
+          if [ "$TAG" != "$HAVE" ]; then
+            echo "tag v$TAG does not name the version in pyproject.toml ($HAVE)" >&2
+            exit 1
+          fi
+
+      - name: the e2e is GREEN on the commit being tagged
+        # ⛔ THE SUITE BELOW IS THE DEFAULT SELECTION, WHICH DESELECTS `e2e`. So
+        # until this step existed, the job that decides whether a release goes
+        # out had never looked at the suite that drives a browser: a red there
+        # stopped neither a merge nor a tag. 0.22.1 was tagged from a main whose
+        # e2e was red, and nothing said so because nothing was looking.
+        #
+        # It ASKS rather than re-runs. The e2e has already run on this commit;
+        # running it again here would cost five minutes to learn what one API
+        # call answers. What was missing was not a second measurement, it was
+        # somebody reading the first one.
+        #
+        # The selftest runs first, because a gate that has only ever printed
+        # PASS is not a gate - and this one's verdict is a pure function, so its
+        # ten known-bad cases cost nothing and need no network.
+        if: github.event_name == 'push'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/e2e_is_green.py --selftest
+          python scripts/e2e_is_green.py --repo "$GITHUB_REPOSITORY" --sha "$GITHUB_SHA"
+
+      - name: the pinned invisible-core is ON THE INDEX
+        # THE ordering rule, as a gate instead of a sentence in a runbook. This
+        # package declares `invisible-core==X.Y.Z`, so pip resolves the PUBLISHED
+        # core - and a consumer released against a core that is not there yet is
+        # red on every runner and broken for every user while passing locally,
+        # because the workbench core is an editable install and cannot see this
+        # class of failure at all. Measured 2026-07-28: both consumers moved to a
+        # name a new core had, neither release could resolve it.
+        shell: bash
+        run: |
+          # BOTH spellings. PEP 503 normalises `invisible_core` and
+          # `invisible-core` to the same project, and the dependency here is
+          # written with the UNDERSCORE while every comment about it uses the
+          # hyphen. Written against the prose first, this grep matched nothing
+          # and the step exited 1 on a correct pyproject - caught by running it
+          # by hand before the first release rather than during one.
+          WANT=$(grep -oE 'invisible[-_]core==[0-9]+\.[0-9]+\.[0-9]+' pyproject.toml                  | head -1 | cut -d= -f3)
+          if [ -z "$WANT" ]; then
+            echo "no exact invisible-core== pin found in pyproject.toml" >&2
+            echo "(looked for invisible-core== and invisible_core==)" >&2
+            exit 1
+          fi
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/invisible-core/$WANT/json")
+          if [ "$CODE" != "200" ]; then
+            echo "invisible-core $WANT is not on the index (HTTP $CODE)." >&2
+            echo "Publish the core FIRST, then this package. In this order every" >&2
+            echo "install resolves; in the other one none of them do." >&2
+            exit 1
+          fi
+          echo "::notice::invisible-core $WANT is on the index"
+
+      - name: install the package and its dev extras
+        # Its own step, BEFORE the arming below: install_hooks.py imports
+        # invisible_core, and the first version of this file installed inside the
+        # suite step, so the arming ran against a runner that had nothing
+        # installed and died on ModuleNotFoundError. ci.yml has had this order
+        # all along; this workflow had simply never run.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: arm the pre-push gates
+        # The suite asserts core.hooksPath is set and a fresh checkout has none.
+        run: python scripts/install_hooks.py
+
+      - name: the suite
+        # A tag push does not trigger the ordinary test workflow, which runs on
+        # branches and pull requests. Without this, tagging is a way to publish
+        # code no job has run.
+        run: python -m pytest -q
+
+  upload:
+    needs: [already-published, gate]
+    if: needs.already-published.outputs.present != 'yes'
+    runs-on: ubuntu-latest
+    environment: pypi          # the trust relationship lives HERE, behind the gate
+    permissions:
+      id-token: write          # trusted publishing; no token in a secret anywhere
+      contents: write          # to commit the ledger entry back
+      pull-requests: write     # and to open one when protection declines the push
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip build
+      - run: python -m build
+      - name: twine check
+        run: |
+          pip install twine
+          twine check dist/*
+      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: record what was published, and commit it back
+        # The action above holds the OIDC credential and does the upload; the
+        # thing that writes PUBLISHED.json is invisible_core.release. So the
+        # first successful run of this workflow published 0.3.1 and recorded
+        # nothing - re-creating, on its first green run, the exact gap that had
+        # been back-filled by hand an hour earlier for 0.6.0 and 0.3.0.
+        #
+        # Recording the TREE is correct here and only here: this job is checked
+        # out at the tag, so the tree is what was built and uploaded. A backfill
+        # of a version published elsewhere must come from the artifacts the index
+        # serves instead, because the tree has moved on.
+        run: |
+          # `-e .` and not `.[dev]`: this is the job holding the OIDC
+          # credential and `contents: write`, and `record` needs the package
+          # importable plus a build backend, nothing else. The dev extra
+          # pulls pytest, ruff and - in some consumers - a whole
+          # test toolchain into the one job that can push to main.
+          python -m pip install --quiet -e . build hatchling
+          python -m invisible_core.release record
+          if git diff --quiet -- PUBLISHED.json; then
+            echo "::warning::nothing recorded - the ledger did not change"
+            exit 0
+          fi
+          # The direct push CANNOT succeed while the branch requires status
+          # checks: a required check cannot have passed on a commit that does
+          # not exist yet, and since 2026-08-13 `enforce_admins` is TRUE, so
+          # not even a maintainer push has a bypass. Measured 2026-08-05 -
+          # every publish run on all three repos ended in failure with GH006,
+          # on releases that had shipped. So the push is tried, and when
+          # declined the entry goes to a branch and a pull request rather than
+          # nowhere. Green when it is preserved, red only when it is LOST.
+          #
+          # THE FALLBACK HAD NEVER RUN ONCE - repaired 2026-08-14, the same fix
+          # in all three repos. Two defects, and the first hid the second:
+          #
+          #   1. `HEAD:$LEDGER_BRANCH` cannot work from the detached HEAD a tag
+          #      build checks out: the destination branch does not exist yet and
+          #      the source is a commit object, so git cannot tell a branch from
+          #      a tag and refuses with "The destination you provided is not a
+          #      full refname". Under `bash -e` that aborts the step, so the
+          #      pull request below was never even attempted and neither
+          #      `::error::` was ever printed - which is why no `ledger/*`
+          #      branch and no pull request has ever existed on any of the three
+          #      repos, across four red runs on releases that had shipped.
+          #   2. Creating the pull request also needs "Allow GitHub Actions to
+          #      create and approve pull requests" ON THE REPOSITORY, which is
+          #      off on all three. The job's own `pull-requests: write` is
+          #      necessary and not sufficient. So the pull request is BEST
+          #      EFFORT: once the branch push lands the entry is safe, and the
+          #      run does not go red over a convenience that a repository
+          #      setting can withdraw.
+          VERSION=$(python -c "import json;print(json.load(open('PUBLISHED.json'))['released'][-1]['version'])")
+          git config user.name "feder-cr"
+          git config user.email "85809106+feder-cr@users.noreply.github.com"
+          git add PUBLISHED.json
+          # `record` also realigns this version's CHANGELOG heading to the upload
+          # date the index reports, and this is the repository that keeps a
+          # changelog, so this is where it matters. A file rewritten on the
+          # runner's disk that nobody stages is a change that never happened, and
+          # the whole point is that the date stops being written by hand: 0.16.2
+          # shipped dated a day ahead because the heading is typed at bump time,
+          # hours before the upload it claims to describe, in whatever timezone
+          # the author is in. Conditional to match the release notes step below,
+          # and because `git add` on a missing path fails under `bash -e`.
+          if [ -f CHANGELOG.md ]; then
+            git add CHANGELOG.md
+          fi
+          git commit -m "record $VERSION as published"
+          BRANCH="${{ github.event.repository.default_branch }}"
+          if git push origin "HEAD:refs/heads/$BRANCH"; then
+            echo "::notice::ledger entry for $VERSION committed to $BRANCH"
+            exit 0
+          fi
+          echo "the direct push was declined; falling back to a branch and a pull request"
+          LEDGER_BRANCH="ledger/$VERSION"
+          if ! git push -f origin "HEAD:refs/heads/$LEDGER_BRANCH"; then
+            echo "::error::the ledger entry for $VERSION reached NEITHER $BRANCH NOR a branch of its own. It exists only in this run. Back-fill it by hand from the artifacts the index serves, or the next release is refused over a missing entry."
+            exit 1
+          fi
+          echo "::notice::the ledger entry for $VERSION is preserved on branch $LEDGER_BRANCH"
+          CODE=$(curl -s -o /tmp/pr.json -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls" \
+            -d "{\"title\":\"record $VERSION as published\",\"head\":\"$LEDGER_BRANCH\",\"base\":\"$BRANCH\",\"body\":\"The upload succeeded and the ledger could not be pushed to $BRANCH directly: branch protection declines this token, which has no bypass. Merging this keeps the next release from being refused over a missing entry.\"}")
+          if [ "$CODE" = "201" ] || [ "$CODE" = "422" ]; then
+            echo "::error::the ledger for $VERSION is NOT on $BRANCH. Branch $LEDGER_BRANCH carries it and a pull request is open (HTTP $CODE; 422 means one already exists). Merge it before the next release."
+          else
+            echo "::error::the ledger for $VERSION is NOT on $BRANCH. Branch $LEDGER_BRANCH carries it and the pull request could NOT be created (HTTP $CODE - 403 means the repository forbids Actions from creating pull requests). Open and merge it by hand before the next release."
+          fi
+          exit 0
+      - name: create the release page for this tag
+        # Measured 2026-08-11: after pushing three tags, FOUR versions out of four
+        # had no release page, and it was this repo's own gate
+        # (`test_the_published_version_has_a_github_release`, in
+        # `test_release_e2e.py`) that found them AFTER publication. A tag with no
+        # release page is not cosmetic: that gate walks EVERY version on the
+        # index, so one omission refuses a later run for a version nobody is
+        # releasing that day.
+        #
+        # Runs only on the tag path - `workflow_dispatch` has no tag to describe.
+        # Idempotent on purpose: a re-pushed tag, a re-run, or a page created by
+        # hand must all be a no-op rather than a failure, which is the same rule
+        # `already-published` follows one job up.
+        #
+        # The body comes from CHANGELOG.md when the repo keeps one (only this one
+        # does) and is generated otherwise. One step, both cases, so the three
+        # repos carry the same text instead of three variants that drift.
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::the release page for $TAG already exists - nothing to do"
+            exit 0
+          fi
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$VERSION" '
+              $0 ~ ("^## \\[" v "\\]") { p = 1; next }
+              p && /^## \[/ { exit }
+              p { print }
+            ' CHANGELOG.md > /tmp/notes.md
+          else
+            : > /tmp/notes.md
+          fi
+          # A body that is only whitespace reads as a page nobody wrote. Say what
+          # is true instead: the version, and where the artifacts actually are.
+          #
+          # The PyPI name is the repository name with hyphens: the repo is
+          # `invisible_puppeteer` and the project is `invisible-puppeteer`.
+          # PyPI redirects the underscore form, so getting this wrong would have
+          # produced a link that works and is still wrong to read. And no
+          # backticks in the body - they would be command substitution inside a
+          # double-quoted shell string, which is how fourteen quoted terms once
+          # became empty strings.
+          PKG=$(printf '%s' "${{ github.event.repository.name }}" | tr '_' '-')
+          if [ -z "$(tr -d '[:space:]' < /tmp/notes.md)" ]; then
+            printf '%s\n' \
+              "$PKG $VERSION is on PyPI." \
+              "" \
+              "Artifacts and checksums: https://pypi.org/project/$PKG/$VERSION/" \
+              > /tmp/notes.md
+          fi
+          if gh release create "$TAG" --title "$TAG" --notes-file /tmp/notes.md; then
+            echo "::notice::release page created for $TAG"
+            exit 0
+          fi
+          echo "::error::the release page for $TAG could not be created. The package IS published; create the page by hand or a later run of the release gate will refuse over it."
+          exit 1

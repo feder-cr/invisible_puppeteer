@@ -1,0 +1,139 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The same gates as invisible_playwright's tests.yml, minus the two that belong
+# to that repository alone (its guides and its version-is-taken test). `gate` is
+# the ONLY context the branch protection requires: it depends on every job, so
+# its name never drifts when the matrix changes, and it refuses on failure or
+# cancellation but not on a skip, because `unit` is skipped on purpose while the
+# pinned core is not on the index yet (core-on-index.yml says why).
+jobs:
+  english:
+    name: the repository is English
+    needs: core-on-index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install the pinned core, which carries the gate
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: check the prose
+        run: |
+          python -m invisible_core.english --selftest
+          python -m invisible_core.english
+
+  claims:
+    name: the README promises nothing it cannot support
+    needs: core-on-index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install the pinned core, which carries the gate
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: check the claims
+        run: |
+          python -m invisible_core.claims --selftest
+          python -m invisible_core.claims
+
+  core-on-index:
+    uses: ./.github/workflows/core-on-index.yml
+
+  unit:
+    name: pytest (${{ matrix.os }}, py${{ matrix.python }})
+    needs: core-on-index
+    if: needs.core-on-index.outputs.available == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        # Every version `requires-python = ">=3.11"` promises, on ubuntu; Windows
+        # on 3.12 only, as in invisible_playwright.
+        python: ["3.11", "3.12", "3.13", "3.14"]
+        exclude:
+          - { os: windows-latest, python: "3.11" }
+          - { os: windows-latest, python: "3.13" }
+          - { os: windows-latest, python: "3.14" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install package + dev extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" ruff
+      - name: arm the pre-push gates
+        run: python scripts/install_hooks.py
+      - name: undefined names and duplicate definitions
+        run: python -m ruff check --select F821,F811,F601 --no-cache --output-format concise .
+      - name: Run pytest
+        shell: bash
+        run: |
+          set -o pipefail   # or tee would swallow pytest's exit code
+          pytest tests/ -v --tb=short -rs | tee tests-report.txt
+      # pytest's exit code cannot tell "everything passed" from "the marker
+      # expression deselected everything". A tripwire, a little under the count.
+      - name: Refuse a run in which the suite deselected itself
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          text = pathlib.Path("tests-report.txt").read_text(encoding="utf-8", errors="ignore")
+          m = re.search(r"(\d+) passed", text)
+          passed = int(m.group(1)) if m else 0
+          if passed < 180:
+              print(f"only {passed} test(s) ran (expected 180+) - the selection "
+                    f"dropped most of the suite and the exit code cannot see it",
+                    file=sys.stderr)
+              sys.exit(1)
+          print(f"{passed} tests ran")
+          PY
+
+  gate:
+    needs: [core-on-index, unit, english, claims]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: refuse unless nothing failed
+        run: |
+          echo "core-on-index: ${{ needs.core-on-index.result }}"
+          echo "unit:          ${{ needs.unit.result }}"
+          echo "english:       ${{ needs.english.result }}"
+          echo "claims:        ${{ needs.claims.result }}"
+          case "${{ needs.unit.result }}" in
+            failure|cancelled) echo "the suite did not pass"; exit 1 ;;
+          esac
+          case "${{ needs.core-on-index.result }}" in
+            failure|cancelled) echo "the index check did not run"; exit 1 ;;
+          esac
+          case "${{ needs.english.result }}" in
+            failure|cancelled) echo "the repository is not English"; exit 1 ;;
+          esac
+          case "${{ needs.claims.result }}" in
+            failure|cancelled) echo "the README promises what no measurement supports"; exit 1 ;;
+          esac
+          echo "ok"
