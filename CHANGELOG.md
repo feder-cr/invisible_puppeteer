@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Values a user picks are committed by Firefox itself.** `page.select` and
+  `ElementHandle.uploadFile` hand the choice to the engine's native input
+  commands (`Page.selectOptions`, `Page.setFileInputFiles`), which take the
+  same paths as the dropdown and the file picker. The page gets `input` and
+  `change` with the shape a user's pick gives, inside shadow roots too, and
+  nothing when the selection did not change, where pyppeteer fires the pair
+  regardless. The command this used to call, `Page.dispatchTrustedInputEvents`,
+  is gone from the engine, so this needs the engine that ships the new commands
+  and lands with the core pin that seals it.
+
 ## [0.1.1] - 2026-10-02
 
 ### Fixed
