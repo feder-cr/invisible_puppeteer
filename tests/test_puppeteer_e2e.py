@@ -169,6 +169,41 @@ def test_typing_keys_and_select(page, run):
     assert "change:true" in run(page.evaluate("() => window.events"))
 
 
+def test_select_and_upload_fire_what_a_user_fires(page, run, tmp_path):
+    """`select` and `uploadFile` hand the choice to Firefox's own user paths
+    (the dropdown's, the file picker's), so the page gets what a user's pick
+    makes Firefox fire: `input` composed and `change` not, neither cancelable,
+    and nothing at all for an option that was already selected. The known-bad
+    input is the pair this used to request from the engine after selecting in
+    the page: cancelable and composed, and fired for an unchanged choice too.
+    A `change` handler must also be able to read the file it was given."""
+    sample = tmp_path / "upload.txt"
+    sample.write_bytes(b"data")
+    run(page.evaluate("""() => {
+        const f = document.createElement('input');
+        f.type = 'file'; f.id = 'up'; document.body.prepend(f);
+        window.seen = [];
+        for (const t of ['input', 'change'])
+          document.addEventListener(t, e => {
+            const files = e.target.files ? [...e.target.files].map(x => x.name) : null;
+            seen.push([e.target.id, e.type, e.constructor.name, e.isTrusted,
+                       e.cancelable, e.composed, files]);
+          }, true);
+    }"""))
+    assert run(page.select("#pick", "b")) == ["b"]
+    assert run(page.evaluate("() => window.seen")) == [
+        ["pick", "input", "Event", True, False, True, None],
+        ["pick", "change", "Event", True, False, False, None]]
+    run(page.evaluate("() => { window.seen = []; }"))
+    assert run(page.select("#pick", "b")) == ["b"]
+    assert run(page.evaluate("() => window.seen")) == []
+    element = run(page.querySelector("#up"))
+    run(element.uploadFile(str(sample)))
+    assert run(page.evaluate("() => window.seen")) == [
+        ["up", "input", "Event", True, False, True, ["upload.txt"]],
+        ["up", "change", "Event", True, False, False, ["upload.txt"]]]
+
+
 def test_waiting(page, run):
     el = run(page.waitForSelector("#appeared", {"visible": True, "timeout": 5000}))
     assert run(page.evaluate("(e) => e.textContent", el)) == "here"

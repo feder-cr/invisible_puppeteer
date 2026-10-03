@@ -189,10 +189,11 @@ def test_the_fill_events_are_TRUSTED(firefox_binary):
     and the first draft of this test only exercised one. On a TEXT input
     `injected.fill` returns `needsinput` and the text gets TYPED: those
     events are trusted because they come from key presses, and a mutation to
-    `Page.dispatchTrustedInputEvents` **survived** because that line was
-    never executed. The path [B175] lives on is the other one: inputs whose
-    value gets SET - `date`, `color`, `range`, `time` - where `fill` returns
-    `done` and the events have to be requested from the trusted command.
+    the command that fired them **survived** because that line was never
+    executed. The path [B175] lives on is the other one: inputs whose value
+    gets SET - `date`, `color`, `range`, `time` - where `injected.fill`
+    answers `{"setUserInput": value}` and the engine commits it through
+    Firefox's own user path (`Page.setUserInput`), which fires the events.
     """
     actions, inj, f, close = _open(firefox_binary, PAGE)
     try:
@@ -456,6 +457,89 @@ def test_a_bare_string_does_NOT_go_through_the_option_filter():
     assert _normalize_options(["b"]) == [{"valueOrLabel": "b"}]
     assert _normalize_options([{"value": "b"}]) == [{"value": "b"}]
     assert _normalize_options([{"index": 1}]) == [{"index": 1}]
+
+
+class _Recorder:
+    """A connection and an injected script that answer without a browser:
+    enough of both for the retry cycle to reach an action's own body."""
+
+    main_frame = "main"
+
+    def __init__(self, **answers):
+        self.answers = answers
+        self.sent = []
+
+    # the connection
+    def send(self, method, params=None, session=None, timeout=None, abort=None):
+        self.sent.append((method, dict(params or {})))
+        if method == "Page.getContentQuads":
+            return {"quads": [{"p1": {"x": 390, "y": 295}, "p2": {"x": 410, "y": 295},
+                               "p3": {"x": 410, "y": 305}, "p4": {"x": 390, "y": 305}}]}
+        return {}
+
+    # the injected script
+    def evaluate(self, frame, expression, **kw):
+        return {"w": 1280, "h": 800}
+
+    def check_hit_target(self, frame, element, point):
+        return "done"
+
+    def call(self, frame, declaration, *args, **kw):
+        for needle, answer in self.answers.items():
+            if "injected.%s(" % needle in declaration:
+                return answer
+        return "done"
+
+    def query_selector(self, frame, selector, strict=False):
+        return "element"
+
+    def element_states(self, frame, element, states):
+        return {"ok": True}
+
+    def scroll_into_view(self, frame, element):
+        return False
+
+    def dispose(self, frame, element):
+        pass
+
+
+def _recording_actions(**answers):
+    rec = _Recorder(**answers)
+    a = Actions.__new__(Actions)
+    a.lifecycle = rec
+    a.inj = rec
+    a.c = rec
+    a.session = "s"
+    a.keyboard = None
+    return a, rec
+
+
+def test_select_option_hands_the_resolved_options_to_the_engine():
+    """⛔ THE PAGE ONLY RESOLVES; THE ENGINE SELECTS. `injected.selectOptions`
+    answers which option indices were meant, and `Page.selectOptions` selects
+    them through the dropdown's own path, so Firefox fires `input`/`change`
+    itself (and nothing for an option that was already selected). The
+    known-bad input: select in the page and ask the engine for the events,
+    which is the command the engine no longer has."""
+    a, rec = _recording_actions(
+        selectOptions={"indices": [2], "values": ["c"]})
+    assert a.select_option("#s", ["c"], timeout=2.0) == ["c"]
+    assert ("Page.selectOptions",
+            {"frameId": "main", "objectId": "element", "indices": [2]}) in rec.sent
+    assert "Page.dispatchTrustedInputEvents" not in [m for m, _ in rec.sent]
+
+
+def test_a_picked_value_is_committed_by_the_engine():
+    """A date, a color or a range is not typed: `injected.fill` answers the
+    value it would hold, and the engine commits it with `Page.setUserInput`,
+    Firefox's own path for a value a user picks. Nothing is typed and no event
+    is requested."""
+    a, rec = _recording_actions(fill={"setUserInput": "2026-01-15"})
+    a.fill("#d", "2026-01-15", timeout=2.0)
+    assert ("Page.setUserInput",
+            {"frameId": "main", "objectId": "element",
+             "value": "2026-01-15"}) in rec.sent
+    assert "Page.dispatchTrustedInputEvents" not in [m for m, _ in rec.sent]
 
 
 @pytest.mark.e2e

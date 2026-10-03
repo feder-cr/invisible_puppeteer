@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.2] - 2026-10-03
+
+### Changed
+- **Values a user picks are committed by Firefox itself.** `page.select` and
+  `ElementHandle.uploadFile` hand the choice to the engine's native input
+  commands (`Page.selectOptions`, `Page.setFileInputFiles`), which take the
+  same paths as the dropdown and the file picker. The page gets `input` and
+  `change` with the shape a user's pick gives, inside shadow roots too, and
+  nothing when the selection did not change, where pyppeteer fires the pair
+  regardless. The command this used to call, `Page.dispatchTrustedInputEvents`,
+  is gone from the engine, so this needs the engine that ships the new commands
+  and lands with the core pin that seals it.
+
+### Fixed
+- **A click lands where it was asked on a page with a saved zoom**, and on
+  Linux behind a SOCKS proxy real sites see WebRTC working: both are fixes in
+  the firefox-35 engine.
+
+### Requires
+- `invisible-core` 35.32.0, which seals the firefox-35 engine. This version
+  does not run on firefox-34, and earlier versions do not run on firefox-35.
+
 ## [0.1.1] - 2026-10-02
 
 ### Fixed

@@ -30,7 +30,10 @@ def test_the_generated_protocol_has_the_five_domains():
     # ones) and the one event were shipped by the engine and never mirrored.
     # What ties the mirror to the engine is `gen_juggler_protocol.py --check`
     # against the pinned binary, run where the binary is - the e2e job.
-    assert len(COMMANDS) == 76, "commands: %d" % len(COMMANDS)
+    # 77 since the engine stopped building input events: the one command that
+    # did (`Page.dispatchTrustedInputEvents`) is gone, and `Page.selectOptions`
+    # and `Page.setUserInput` commit the value through Firefox's own path.
+    assert len(COMMANDS) == 77, "commands: %d" % len(COMMANDS)
     assert len(EVENTS) == 35, "events: %d" % len(EVENTS)
 
 
@@ -43,8 +46,43 @@ def test_the_commands_the_client_will_use_are_declared():
                  # Asked after every click and hover since [B217]: an engine
                  # without it refuses the question, and the mirror must say so
                  # before a browser does.
-                 "Page.pointerLanded"):
+                 "Page.pointerLanded",
+                 # How a picked value, an option and a file reach a control:
+                 # through Firefox's own user paths, which fire the events.
+                 "Page.setUserInput", "Page.selectOptions",
+                 "Page.setFileInputFiles"):
         assert name in COMMANDS, name
+    # The engine no longer builds `input`/`change` itself: a client still
+    # asking for them would be refused at the first `select_option`.
+    assert "Page.dispatchTrustedInputEvents" not in COMMANDS
+
+
+def test_every_protocol_name_this_package_writes_is_declared():
+    """⛔ A COMMAND THE ENGINE NO LONGER HAS IS FOUND HERE, NOT IN A BROWSER.
+
+    The mirror is regenerated from the shipped engine; the code that calls it
+    is not. When `Page.dispatchTrustedInputEvents` left the engine, the mirror
+    lost it and `actions.py` still sent it: nothing in the default selection
+    noticed, and the first `select_option` against the new engine failed. So
+    every `"Domain.name"` literal in the package must be a command or an event
+    of the mirror. The known-bad input: put that old name back in a `send`.
+    """
+    import pathlib
+    import re
+
+    import invisible_puppeteer
+
+    pattern = re.compile(
+        r"""["']((?:Browser|Page|Network|Runtime|Heap)\.[a-z]\w*)["']""")
+    root = pathlib.Path(invisible_puppeteer.__file__).parent
+    unknown = {}
+    for source in sorted(root.rglob("*.py")):
+        if source.name == "protocol.py":
+            continue
+        for name in pattern.findall(source.read_text(encoding="utf-8")):
+            if name not in COMMANDS and name not in EVENTS:
+                unknown.setdefault(name, []).append(source.name)
+    assert not unknown, "not in the protocol mirror: %r" % unknown
 
 
 def test_every_type_uses_only_the_eight_known_combinators():

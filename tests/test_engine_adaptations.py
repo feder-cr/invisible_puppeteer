@@ -7,7 +7,8 @@ unadapted code first - and passes on the adaptation:
      wrapper draws it and the engine sends one jump);
   2. a dialog opened by the action ends the wait for `Page.pointerLanded`
      (there, the wait runs its ten seconds);
-  3. `fill("")` deletes the selected text (there, the field keeps its value);
+  3. `fill("")` deletes the selected text, and leaves `change` to the blur
+     (there, the field keeps its value);
   4. `Connection.send` can be interrupted by the caller.
 """
 from __future__ import annotations
@@ -78,7 +79,6 @@ class _Connection:
 class _Injected:
     def __init__(self, fill_result="needsinput"):
         self.fill_result = fill_result
-        self.trusted = []
 
     def query_selector(self, frame, selector, strict=False):
         return "element"
@@ -118,7 +118,6 @@ def _actions(conn=None, injected=None, motion=True) -> Actions:
         from invisible_puppeteer._behaviour import _sub_seed
         from invisible_puppeteer._motion import CursorMotion
         a.motion = CursorMotion(_sub_seed(42, "server:drag"))
-    a._trusted_events = lambda f, el, types: a.inj.trusted.append(tuple(types))
     return a
 
 
@@ -157,10 +156,16 @@ def test_a_dialog_opened_by_the_click_ends_the_landing_wait():
 
 
 def test_clearing_a_field_deletes_the_selected_text():
+    """The Delete is the whole of it. `change` used to be requested from the
+    engine as well, while the field still had focus: Firefox fired a second
+    one at the blur, and a contenteditable got one it can never fire. The
+    engine has no such command any more, and `change` comes from the blur."""
     a = _actions()
     a.fill("#b", "", timeout=2.0)
     assert a.keyboard.pressed == ["Delete"]
-    assert ("change",) in a.inj.trusted
+    sent = [m for m, _ in a.c.sent]
+    assert not {"Page.dispatchTrustedInputEvents", "Page.setUserInput",
+                "Page.selectOptions"} & set(sent), sent
 
 
 class _Pipe:

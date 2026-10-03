@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "invisible_puppeteer"
-version = "0.1.1"
+version = "0.1.2"
 description = "pyppeteer's API for a patched Firefox with a deterministic stealth profile."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -36,7 +36,7 @@ dependencies = [
     # see the long comment on that line in its pyproject. It is the ONE place
     # this package writes the expected core version: `_pin.py` reads it back
     # out of this distribution's own metadata at import time.
-    "invisible_core==34.32.0",
+    "invisible_core==35.32.0",
     # ⛔ NO `pyppeteer` AND NO `playwright`. The pyppeteer API is implemented here
     # on top of the engine; installing pyppeteer would not break anything, and
     # that is the problem - both would coexist and one of them would simply
