@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.2] - 2026-10-03
 
 ### Changed
 - **Values a user picks are committed by Firefox itself.** `page.select` and
@@ -12,6 +12,15 @@
   regardless. The command this used to call, `Page.dispatchTrustedInputEvents`,
   is gone from the engine, so this needs the engine that ships the new commands
   and lands with the core pin that seals it.
+
+### Fixed
+- **A click lands where it was asked on a page with a saved zoom**, and on
+  Linux behind a SOCKS proxy real sites see WebRTC working: both are fixes in
+  the firefox-35 engine.
+
+### Requires
+- `invisible-core` 35.32.0, which seals the firefox-35 engine. This version
+  does not run on firefox-34, and earlier versions do not run on firefox-35.
 
 ## [0.1.1] - 2026-10-02
 
