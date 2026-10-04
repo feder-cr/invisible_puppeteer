@@ -18,7 +18,7 @@ import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from invisible_core import parse_proxy
+from invisible_core import SessionLocale, parse_proxy
 
 from . import connection
 from ._profile import _read_version, _remove_profile, _write_user_js
@@ -402,6 +402,23 @@ class Browser:
             value = options.get(name)
             if value in (None, ""):
                 continue
+            if name == "locale":
+                # ⛔ THE ENGINE TAKES A LANGUAGE LIST, NOT A TAG. The context's
+                # locale becomes the BrowsingContext's LanguageOverride, which
+                # navigator.languages is split from, the realm's Intl locale is
+                # taken from and the Accept-Language header is prepared from -
+                # the same field the launch locale seeds with
+                # `juggler.locale.override`, the full list invisible_core
+                # writes to `intl.accept_languages`. Sent as the bare tag, a
+                # context asking for "de-DE" would report navigator.languages
+                # == ["de-DE"] where a German Firefox reports de-DE, de,
+                # en-US, en; and the default context, which gets the launch
+                # locale through these same options, would drop from the
+                # profile's four entries to one. The list is the core's
+                # decision for that tag, and nothing here derives it: the
+                # default context carries the launch decision's primary
+                # and gets back the list the profile declared.
+                value = SessionLocale.of(value).accept_languages
             self.context_send(command,
                               {"browserContextId": context_id, field: value})
         # ⛔ The rest of the option set, each one a lever that was arriving

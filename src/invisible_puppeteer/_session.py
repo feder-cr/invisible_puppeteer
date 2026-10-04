@@ -193,7 +193,7 @@ def build_env(
 def build_prefs(
     *,
     profile: Any,
-    locale: Optional[str],
+    locale: Any,
     timezone: Optional[str],
     extra_prefs: Optional[Dict[str, Any]],
     virtual_display: bool,
@@ -392,7 +392,8 @@ class CommonLaunch:
     ⛔ WHAT THIS CLASS EXPECTS, said out loud because a mixin's contract is
     otherwise invisible: both subclasses set `seed`, `_binary_path`,
     `_cursor_engine`, `_extra_prefs`, `_headless`, `_humanize`,
-    `_lifetime_guard`, `_locale`, `_profile`, `_session_token`, `_show_cursor`,
+    `_lifetime_guard`, `_locale` (the core's SessionLocale, None until the
+    launch decides it), `_profile`, `_session_token`, `_show_cursor`,
     `_srflx_declared`, `_timezone` and `_virtual_display` in their own
     `__init__`. They already did, identically, which is why this works at all.
     """
@@ -454,8 +455,12 @@ class CommonLaunch:
         # fall back to the host system TZ. The per-realm path works for every zone.
         if self._timezone:
             kwargs["timezoneId"] = self._timezone
-        if self._locale:
-            kwargs["locale"] = self._locale
+        # The context option is ONE tag, so it gets the decision's primary:
+        # what navigator.language reports for the launch prefs. The engine
+        # browser turns it back into the same list (SessionLocale.of),
+        # so the default context declares exactly what the prefs declared.
+        if self._locale is not None:
+            kwargs["locale"] = self._locale.primary
         return kwargs
 
     def _build_env(self, prefs: Dict[str, Any]) -> Dict[str, str]:
