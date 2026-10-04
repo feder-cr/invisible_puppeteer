@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from invisible_core import configure_proxy as _configure_proxy_shared
-from invisible_core import prepare_session_geo
+from invisible_core import SessionLocale, persona_cookies, prepare_session_geo
 from invisible_core._fpforge import Profile, generate_profile
 
 from . import _session, errors
@@ -60,7 +60,11 @@ class _Session(_session.CommonLaunch):
         self._humanize = humanize
         self._cursor_engine = resolve_cursor_engine(humanize, _motion_available)
         self._show_cursor = None if show_cursor is None else bool(show_cursor)
-        self._locale = locale
+        # What the caller ASKED for: "auto" or a tag. The decision is the
+        # core's, made at launch from the egress (prepare_session_geo), and
+        # there is none before it.
+        self._locale_requested = locale
+        self._locale: Optional[SessionLocale] = None
         self._timezone = timezone
         self._extra_prefs = extra_prefs or None
         self._binary_path = binary_path
@@ -86,13 +90,15 @@ class _Session(_session.CommonLaunch):
         (B172's sandbox workarounds depend on whether it exists), the token
         before the environment (the environment carries it)."""
         try:
-            geo = prepare_session_geo(self._timezone, self._proxy)
+            # The language is decided in the same call, from the same egress:
+            # the core resolves "auto" and applies Firefox's language table, and
+            # the session keeps the DECISION (a SessionLocale), never a tag.
+            geo = prepare_session_geo(self._timezone, self._proxy,
+                                      self._locale_requested)
             self._timezone = geo.timezone
+            self._locale = geo.locale
             self._webrtc_egress_ip = geo.egress_ip
             self._srflx_declared = geo.srflx_to_declare()
-            if (self._locale or "").strip().lower() == "auto":
-                from invisible_core import resolve_session_locale
-                self._locale = resolve_session_locale(geo.egress_ip, self._proxy)
             executable = resolve_executable(self._binary_path)
             true_headless = self._resolve_headless()
             prefs = self._build_prefs()
@@ -118,8 +124,13 @@ class _Session(_session.CommonLaunch):
             else:
                 context = browser.new_context(options)
             if self._prep_recaptcha:
-                from ._recaptcha_seed import seed_recaptcha_cookies
-                seed_recaptcha_cookies(context, self._profile, locale=self._locale)
+                # The cookie list is the core's (persona_cookies, pure data);
+                # handing it to the engine context is the only part kept here.
+                # A failure to seed never fails the launch, as before.
+                try:
+                    context.set_cookies(persona_cookies(self._profile, self._locale))
+                except Exception:
+                    pass
             self.engine_context = context
             # pyppeteer's launch leaves one page open; a persistent profile
             # already has one of its own, and it is reused.

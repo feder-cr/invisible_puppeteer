@@ -1,5 +1,41 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **A session reports one language in every value.** `locale="auto"` and an
+  explicit tag both go through `invisible_core.prepare_session_geo`, the same
+  call that resolves the timezone, and the session keeps its result: the
+  language list Firefox's own table gives that tag. `navigator.language`,
+  `navigator.languages`, the locale prefs, the default context's locale, the
+  `Accept-Language` header and the Google CONSENT cookie all read it. A region
+  that has no Firefox build of its own used to report two languages: an
+  Australian egress resolved `en-AU` for the locale prefs and `en-US, en` for
+  the language list, so `navigator.language` said `en-US` while the requested
+  locale said `en-AU`. It now reports `en-US` everywhere, as an English
+  Firefox installed in Australia does, and the same holds for the other
+  regions in that position (New Zealand, Ireland, India and more).
+- **The session's default context carries the decided language**, the first
+  entry of the list (`fr` for a French session, whose list is
+  `fr, fr-FR, en-US, en`), not the tag that was passed.
+- **The persona cookies (`prep_recaptcha=True`) come from the core**
+  (`invisible_core.persona_cookies`). Same cookies for the same seed; the
+  CONSENT cookie's language reads the decided language instead of the raw
+  tag. The private `_recaptcha_seed` module is gone.
+
+### Fixed
+- **A context's locale reaches the engine as the language list it stands
+  for.** `Browser.setLocaleOverride` carried the bare tag, so on firefox-36,
+  which applies a context's locale, a context asking for `de-DE` would report
+  `navigator.languages == ["de-DE"]` where a German Firefox reports
+  `de-DE, de, en-US, en`, and the default context would drop from the
+  profile's four entries to one. The list is the core's decision for the tag
+  (`decide_session_locale(tag).accept_languages`).
+
+### Requires
+- `invisible-core` 36.32.0, which seals the firefox-36 engine and makes the
+  language decision. This version does not run on an earlier core.
+
 ## [0.1.2] - 2026-10-03
 
 ### Changed
