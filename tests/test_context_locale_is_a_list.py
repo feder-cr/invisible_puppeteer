@@ -108,9 +108,10 @@ class _Decided(_session.CommonLaunch):
 def test_the_default_context_locale_is_the_decision_s_primary(requested):
     """The context option is ONE tag, and it is what navigator.language reports.
 
-    An Australian session decides `en-US, en` (Firefox has no en-AU build); a
-    default context carrying the requested "en-AU" would be the second answer
-    the 36.32.0 core removed.
+    Since core 36.33.0 an explicit tag goes first ("en-AU, en-US, en"), so the
+    primary is the requested tag; before, an Australian session decided
+    "en-US, en", and a default context carrying "en-AU" would have been a
+    second answer. Either way the context gets the decision's primary.
     """
     session = _Decided(requested)
     assert isinstance(session._locale, SessionLocale)
@@ -118,8 +119,9 @@ def test_the_default_context_locale_is_the_decision_s_primary(requested):
 
 
 @pytest.mark.unit
-def test_an_australian_session_s_default_context_is_en_us():
-    assert _Decided("en-AU")._default_context_options()["locale"] == "en-US"
+def test_an_australian_session_s_default_context_is_en_au():
+    """Known-bad until core 36.33.0: "en-US", the requested tag replaced."""
+    assert _Decided("en-AU")._default_context_options()["locale"] == "en-AU"
 
 
 @pytest.mark.unit
