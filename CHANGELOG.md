@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-06
+
+### Changed
+- **The language of `locale="auto"` is the real Firefox of the egress
+  country, by share.** Through `invisible-core` 36.33.0 (the required version
+  is exact, as before). A country used to map to one country tag (`de-DE`)
+  that no Firefox build has, so a German egress sent `de-DE,de;q=0.9,...`
+  where a German Firefox sends `de,en-US;q=0.9,en;q=0.8`, and every session
+  of a country spoke the same language. Now each country carries the Firefox
+  builds people there run and their share, from Mozilla's Firefox Public
+  Data Report (Belgium: French 40%, Dutch 31%, US English 22%), and the egress
+  IP picks one: the same address always gets the same language, and the
+  addresses of a country spread over its builds as measured.
+- **An explicit `locale` is `navigator.language`.** `locale="en-AU"` reports
+  `en-AU, en-US, en` (it reported `en-US, en`), and `"fr-FR"` reports
+  `fr-FR, fr, en-US, en` (it reported `fr` first): the requested tag goes
+  first and Firefox's own table gives the tail.
+
+## [0.1.3] - 2026-10-04
+
 ### Changed
 - **A session reports one language in every value.** `locale="auto"` and an
   explicit tag both go through `invisible_core.prepare_session_geo`, the same
