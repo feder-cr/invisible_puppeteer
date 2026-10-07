@@ -4,8 +4,8 @@
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/feder-cr/invisible_puppeteer/main/docs/banner-dark.png">
   <img src="https://raw.githubusercontent.com/feder-cr/invisible_puppeteer/main/docs/banner-light.png" alt="invisible_puppeteer" width="720">
 </picture>
-<h3 align="center">pyppeteer gets caught by anti-bots and captchas.<br>
-This one runs on an anti-detect Firefox with an undetected fingerprint, compatible with your existing pyppeteer code.</h3>
+<h3 align="center">Puppeteer gets caught by anti-bots and captchas.<br>
+This one runs on an anti-detect Firefox with an undetected fingerprint, compatible with your existing Puppeteer code in Python.</h3>
 </div>
 
 ## How it works
@@ -15,7 +15,7 @@ Anti-bots ask two questions, and reCAPTCHA, hCaptcha and Cloudflare Turnstile sc
 **1. Is this a real browser?** Yes. It is Firefox, patched at the C++ source level.
 
 - The browser fingerprint is set inside the engine, not injected into the page: navigator, screen, GPU/WebGL, canvas, fonts, audio, WebRTC, timezone, network. Headless or headed, the same values either way.
-- No Chromium and no DevTools protocol to detect, and no JS shim to read.
+- No Chromium, no DevTools protocol and no JavaScript shim for a page to find.
 
 **2. Is a real person using it?** Yes. The actions are humanized in the driver.
 
@@ -37,7 +37,7 @@ Requires **Python 3.11 or newer**. Supported platforms: **Windows x86_64 / ARM64
 
 ## Usage
 
-**pyppeteer's API, with no code changes.** The same `launch`, `Browser`, `Page` and `ElementHandle`. If you already use pyppeteer, switching is the import:
+**Puppeteer's API in Python, with no code changes.** The same `launch`, `Browser`, `Page` and `ElementHandle` as pyppeteer, Puppeteer's Python port. If you already use it, switching is the import:
 
 ```diff
 - from pyppeteer import launch
@@ -59,7 +59,7 @@ async def main():
 asyncio.run(main())
 ```
 
-Every session gets a distinct fingerprint (GPU, audio, fonts, screen, ~200 fields). pyppeteer does not need to be installed, and should not be: this package is the pyppeteer API.
+Every session gets a distinct fingerprint (GPU, audio, fonts, screen, ~200 fields). Do not install pyppeteer alongside it: this package already implements its API.
 
 ### Options
 
@@ -74,7 +74,7 @@ browser = await launch(
 )
 ```
 
-Proxy schemes: `socks5`, `socks4`, `http`, `https`; DNS goes through the proxy. The viewport defaults to the fingerprint's screen, not pyppeteer's 800x600. The pinnable keys are the same as invisible_playwright's: **[pinning](https://github.com/feder-cr/invisible_playwright/blob/main/docs/pinning.md)**.
+Proxies can be `socks5`, `socks4`, `http` or `https`, and DNS goes through them too. The viewport defaults to the fingerprint's screen size instead of Puppeteer's 800x600. The fields you can pin are the same as in invisible_playwright: **[pinning](https://github.com/feder-cr/invisible_playwright/blob/main/docs/pinning.md)**.
 
 ## CLI
 
@@ -90,10 +90,13 @@ invisible-puppeteer version    # wrapper, core and engine versions
 - **[invisible_playwright](https://github.com/feder-cr/invisible_playwright)**: the same engine with Playwright's API, and **[the guides](https://github.com/feder-cr/invisible_playwright/blob/main/docs/guides.md)** on how detection works.
 - **[invisible_selenium](https://github.com/feder-cr/invisible_selenium)**: the same engine with Selenium's API.
 - **[invisible_playwright_mcp](https://github.com/feder-cr/invisible_playwright_mcp)**: the same engine for AI agents, over MCP.
-- **[invisible_core](https://github.com/feder-cr/invisible_core)**: seed to fingerprint to Firefox preferences. This package pins it.
+- **[invisible_core](https://github.com/feder-cr/invisible_core)**: turns a seed into a fingerprint and the fingerprint into Firefox preferences. This package depends on an exact version of it.
 - **[firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch)**: the C++ patches that build the browser.
 
-Coming from **[pyppeteer](https://github.com/pyppeteer/pyppeteer)**: its own README calls it unmaintained. [What that means](https://github.com/feder-cr/invisible_playwright/blob/main/docs/pyppeteer-unmaintained-playwright.md). From **[puppeteer-extra-plugin-stealth](https://github.com/berstend/puppeteer-extra)**: it patches the page from JavaScript. [What that means](https://github.com/feder-cr/invisible_playwright/blob/main/docs/puppeteer-extra-stealth-unmaintained.md).
+**Switching from another tool?**
+
+- **[pyppeteer](https://github.com/pyppeteer/pyppeteer)**: its own README says it is no longer maintained. [What that means](https://github.com/feder-cr/invisible_playwright/blob/main/docs/pyppeteer-unmaintained-playwright.md).
+- **[puppeteer-extra-plugin-stealth](https://github.com/berstend/puppeteer-extra)**: it patches the page from JavaScript, and its last substantive commit is from mid-2024. [What that means](https://github.com/feder-cr/invisible_playwright/blob/main/docs/puppeteer-extra-stealth-unmaintained.md).
 
 ## Development
 
