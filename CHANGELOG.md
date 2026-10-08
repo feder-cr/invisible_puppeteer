@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-09
+
+### Changed
+- **The screen a page reads is in CSS pixels.** Through `invisible-core`
+  37.33.0 and the firefox-37 engine. A 1920x1080 panel at 125% reports
+  `screen.width` 1536 and `screen.height` 864, as Firefox on that monitor
+  does. Before, it reported the panel's device pixels. The default
+  viewport is derived the same way.
+
+### Fixed
+- **On Linux the virtual display keeps X access control on.** The Xvfb
+  display opened for a headed session without a screen used to run with
+  access control off (`-ac`), so any local process could connect to it and
+  read or drive the browser window. It now gets a private session cookie,
+  handed only to the browser, and removed when the session stops.
+
 ## [0.2.0] - 2026-10-06
 
 ### Changed
