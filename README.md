@@ -113,7 +113,7 @@ uv run pytest -q -m e2e               # against the real browser
 
 ## License
 
-MIT, see [LICENSE](LICENSE), except two files taken from Playwright's driver, which are Apache-2.0 ([THIRD_PARTY.md](THIRD_PARTY.md)). The patched Firefox binary is MPL-2.0, built from [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch).
+MIT, see [LICENSE](LICENSE). The Juggler client it drives the browser with lives in [invisible-core](https://github.com/feder-cr/invisible_core), which carries two files taken from Playwright's driver under Apache-2.0. The patched Firefox binary is MPL-2.0, built from [feder-cr/firefox_antidetect_patch](https://github.com/feder-cr/firefox_antidetect_patch).
 
 ## Disclaimer
 

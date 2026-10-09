@@ -17,8 +17,8 @@ import time
 from typing import Any, List, Optional
 
 from . import errors
-from ._juggler.connection import ProtocolError, TargetClosedError
-from ._juggler.injected import EvaluationError
+from invisible_core.juggler.connection import ProtocolError, TargetClosedError
+from invisible_core.juggler.injected import EvaluationError
 
 #: Runs in the utility world. `root` is an element or null for the document.
 FIND_JS = """(root, by, value) => {

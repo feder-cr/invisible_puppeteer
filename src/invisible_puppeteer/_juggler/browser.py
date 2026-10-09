@@ -13,6 +13,7 @@ has, and that reason did not change when the code was copied.
 """
 from __future__ import annotations
 
+import itertools
 import tempfile
 import threading
 import time
@@ -20,11 +21,12 @@ from typing import Any, Callable, Dict, List, Optional
 
 from invisible_core import SessionLocale, parse_proxy
 
-from . import connection
-from ._profile import _read_version, _remove_profile, _write_user_js
-from .actions import Actions
-from .injected import InjectedScript
-from .lifecycle import Lifecycle
+from invisible_core.juggler import connection
+from invisible_core import write_user_js
+from invisible_core.juggler import PageActs, read_version, remove_profile
+from invisible_core.juggler.actions import Actions
+from invisible_core.juggler.injected import InjectedScript
+from invisible_core.juggler.lifecycle import Lifecycle
 
 
 class EngineError(Exception):
@@ -138,7 +140,7 @@ def launch(executable: str, *, prefs: Optional[Dict] = None,
     # write a session identifier onto disk for no reader at all.
     browser_prefs, session_seed, motion_budget_s = take_session_motion(
         prefs or {})
-    _write_user_js(profile, browser_prefs)
+    write_user_js(profile, browser_prefs)
     # ⛔ PARSED BEFORE THE BROWSER STARTS, so a proxy we cannot express refuses
     # the launch instead of leaving a process running without one.
     proxy_command = None
@@ -147,7 +149,7 @@ def launch(executable: str, *, prefs: Optional[Dict] = None,
             proxy_command = parse_proxy(proxy).as_engine_command()
         except ValueError as exc:
             if ours:
-                _remove_profile(profile)
+                remove_profile(profile)
             raise EngineError("the proxy cannot be applied: %s" % exc)
     try:
         conn = connection.launch(executable, profile, headless=bool(headless),
@@ -155,7 +157,7 @@ def launch(executable: str, *, prefs: Optional[Dict] = None,
                                  ready_timeout=ready_timeout)
     except BaseException:
         if ours:
-            _remove_profile(profile)
+            remove_profile(profile)
         raise
     # ⛔ AND SENT BEFORE ANY PAGE EXISTS. Until 2026-08-30 `proxy=` was
     # accepted and dropped for every scheme the engine prefs do not carry: a
@@ -169,11 +171,11 @@ def launch(executable: str, *, prefs: Optional[Dict] = None,
         except BaseException as exc:
             conn.close()
             if ours:
-                _remove_profile(profile)
+                remove_profile(profile)
             raise EngineError(
                 "the engine refused the proxy, so the browser was closed "
                 "rather than left running without one: %s" % exc)
-    return Browser(conn, _read_version(executable),
+    return Browser(conn, read_version(executable),
                    session_seed=session_seed, motion_budget_s=motion_budget_s,
                    profile_dir=profile if ours else None)
 
@@ -235,6 +237,11 @@ class Browser:
         #: downstream reads that as "no rhythm" rather than as a default one.
         self.session_seed = session_seed
         self.motion_budget_s = motion_budget_s
+        #: Every page of the session gets the next number, and its acts are
+        #: numbered from it (`PageActs`): two tabs never draw the same click,
+        #: field or typed string. The Playwright wrapper numbers its pages the
+        #: same way; a counter per page restarted at 1 in every tab.
+        self._page_numbers = itertools.count(1)
         #: The profile THIS object must remove on close: set only when the
         #: launch invented it. A caller's profile is never here.
         self._owned_profile = profile_dir
@@ -521,7 +528,7 @@ class Browser:
 
         ⛔ THE ORDER IS THE POINT. The browser holds a lock on its profile
         until it is gone, and removing the directory first fails on Windows -
-        silently, because `_remove_profile` must never raise. Until 2026-09-24
+        silently, because `remove_profile` must never raise. Until 2026-09-24
         the two were separate shutdown hooks in invisible_playwright's server,
         run in REVERSE registration order, and the removal was registered
         second: it ran first. One method doing both, in order, is the fix.
@@ -536,7 +543,7 @@ class Browser:
         except Exception:
             pass
         if self._owned_profile:
-            _remove_profile(self._owned_profile)
+            remove_profile(self._owned_profile)
 
 
 # ── context ─────────────────────────────────────────────────────────────────
@@ -681,9 +688,14 @@ class Page:
         self.injected = InjectedScript(conn, session)
         self.injected.install()
         browser = context.browser
+        # ⛔ engine_approach: this client has no cursor of its own, so the
+        # engine side draws every pointer approach - without it every click
+        # would arrive as one jump from wherever the pointer was.
         self.actions = Actions(conn, session, self.lifecycle, self.injected,
+                               acts=PageActs(next(browser._page_numbers)),
                                session_seed=browser.session_seed,
-                               motion_budget_s=browser.motion_budget_s)
+                               motion_budget_s=browser.motion_budget_s,
+                               engine_approach=True)
         self._listeners: List[Callable] = []
         self._detached = False
         self.replayed_events = browser.replay(session, conn.dispatch_event)

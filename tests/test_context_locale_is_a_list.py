@@ -24,7 +24,7 @@ import pytest
 from invisible_core import SessionLocale, decide_session_locale, generate_profile
 from invisible_puppeteer import _session
 from invisible_puppeteer._juggler.browser import Browser
-from invisible_puppeteer._juggler.connection import EventListeners
+from invisible_core.juggler.connection import EventListeners
 
 _invisible_puppeteer_DIR = pathlib.Path(__file__).resolve().parent.parent / "src" / "invisible_puppeteer"
 _LAUNCH_FILE = _invisible_puppeteer_DIR / "launcher.py"

@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 
 from invisible_puppeteer._juggler.browser import Browser
-from invisible_puppeteer._juggler.connection import EventListeners
+from invisible_core.juggler.connection import EventListeners
 
 
 class FakeConnection(EventListeners):

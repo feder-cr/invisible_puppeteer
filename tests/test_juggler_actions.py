@@ -14,7 +14,8 @@ import time
 
 import pytest
 
-from invisible_puppeteer._juggler.actions import Actions, ElementNotActionable
+from invisible_core.juggler.actions import Actions, ElementNotActionable
+from invisible_core.juggler._behaviour import PageActs
 
 PAGE = b"""<!doctype html><html><head><title>actions</title></head><body>
 <button id=ok onclick="this.dataset.clicks=(+(this.dataset.clicks||0)+1)">press</button>
@@ -78,9 +79,9 @@ def _serve(body):
 
 def _open(binary, body):
     from invisible_core.launch import build_launch_plan
-    from invisible_puppeteer._juggler import connection as conn
-    from invisible_puppeteer._juggler.injected import InjectedScript
-    from invisible_puppeteer._juggler.lifecycle import Lifecycle
+    from invisible_core.juggler import connection as conn
+    from invisible_core.juggler.injected import InjectedScript
+    from invisible_core.juggler.lifecycle import Lifecycle
 
     profile_dir = tempfile.mkdtemp(prefix="act_test_")
     plan = build_launch_plan(9, profile_dir=profile_dir, binary_path=binary, timezone="UTC",
@@ -106,7 +107,8 @@ def _open(binary, body):
     time.sleep(0.4)
     lifecycle.goto("http://127.0.0.1:%d/" % srv.server_address[1],
                    until="load", timeout=30)
-    actions = Actions(c, sess, lifecycle, inj)
+    actions = Actions(c, sess, lifecycle, inj, acts=PageActs(1),
+                      engine_approach=True)
 
     def close():
         c.close()
@@ -128,7 +130,7 @@ def _dataset(inj, f, sel, attr):
 def test_a_lifecycle_without_a_frame_SAYS_SO_instead_of_timing_out():
     class FakeLifecycle:
         main_frame = None
-    actions = Actions(None, "S", FakeLifecycle(), None)
+    actions = Actions(None, "S", FakeLifecycle(), None, acts=PageActs(1))
     with pytest.raises(RuntimeError) as e:
         actions.click("#x")
     assert "main frame" in str(e.value)
@@ -145,7 +147,7 @@ def test_typing_does_NOT_send_keypress():
     that was still perfectly true. A test that breaks when the code moves
     teaches people to delete it.
     """
-    from invisible_puppeteer._juggler.keyboard import Keyboard
+    from invisible_core.juggler.keyboard import Keyboard
 
     class Fake:
         def __init__(self):
@@ -156,7 +158,7 @@ def test_typing_does_NOT_send_keypress():
             return {}
 
     c = Fake()
-    Keyboard(c, "S").type("ab")
+    Keyboard(c, "S", acts=PageActs(1)).type("ab")
     assert c.types, "no key event"
     assert set(c.types) == {"keydown", "keyup"}, (
         "types Juggler rejects: %r" % sorted(set(c.types)))
@@ -294,7 +296,7 @@ def test_the_button_mask_is_NOT_a_shifted_one():
     The mutation to reintroduce to try this test: `BUTTON_MASK` set to
     `{0: 1, 1: 2, 2: 4}`.
     """
-    from invisible_puppeteer._juggler.keyboard import BUTTON_MASK
+    from invisible_core.juggler.keyboard import BUTTON_MASK
     assert BUTTON_MASK == {0: 1, 1: 4, 2: 2}, (
         "left 1, right 2, middle 4 - not 1<<button")
 
@@ -304,7 +306,7 @@ def test_the_modifiers_carry_the_FIREFOX_mask():
     Shift 4, Meta 8, read in `toModifiersMask2`. Juggler translates it itself
     into `nsIDOMWindowUtils.MODIFIER_*`, so sending Gecko's constants from
     here would give wrong modifiers with no error at all."""
-    from invisible_puppeteer._juggler.keyboard import MODIFIER_MASK
+    from invisible_core.juggler.keyboard import MODIFIER_MASK
     assert MODIFIER_MASK == {"Alt": 1, "Control": 2, "Shift": 4,
                               "Meta": 8}
 
@@ -313,7 +315,7 @@ def test_the_layout_carries_the_keycode_WITHOUT_location():
     """⛔ `Page.dispatchKeyEvent` wants `keyCodeWithoutLocation`, not
     `keyCode`, and the two differ exactly on the keys that exist twice:
     `ShiftLeft` has 160 and 16. A real Firefox puts 16 in the event."""
-    from invisible_puppeteer._juggler.keyboard import LAYOUT_CLOSURE
+    from invisible_core.juggler.keyboard import LAYOUT_CLOSURE
     s = LAYOUT_CLOSURE["ShiftLeft"]
     assert s["keyCode"] == 160 and s["keyCodeWithoutLocation"] == 16
     assert LAYOUT_CLOSURE["Shift"]["code"] == "ShiftLeft"
@@ -327,9 +329,9 @@ def test_a_key_that_does_not_exist_gets_REJECTED_instead_of_coming_out_empty():
     pass, while the page reads an empty `event.code` on a key that every
     real Firefox names.
     """
-    from invisible_puppeteer._juggler.keyboard import Keyboard, UnknownKey
+    from invisible_core.juggler.keyboard import Keyboard, UnknownKey
     c = _Fake()
-    t = Keyboard(c, "S")
+    t = Keyboard(c, "S", acts=PageActs(1))
     with pytest.raises(UnknownKey):
         t.type(chr(0x4E2D))
     assert not c.events, "sent an event for a key that does not exist"
@@ -342,9 +344,9 @@ def test_shift_changes_the_key_and_control_removes_the_text():
     """The modifier state is the reason the keyboard is a class. ⛔ And
     `Control+a` must NOT insert an "a": with a modifier other than Shift
     the `text` comes out empty, read in the driver."""
-    from invisible_puppeteer._juggler.keyboard import Keyboard
+    from invisible_core.juggler.keyboard import Keyboard
     c = _Fake()
-    t = Keyboard(c, "S")
+    t = Keyboard(c, "S", acts=PageActs(1))
     t.press("Shift+KeyA")
     down = [e for e in c.events
             if e["type"] == "keydown" and e["code"] == "KeyA"]
@@ -362,9 +364,9 @@ def test_shift_changes_the_key_and_control_removes_the_text():
 def test_keyup_NEVER_carries_the_text():
     """⛔ Juggler raises `keyup does not support text option` and the typing
     dies halfway through. Read in its `_dispatchKeyEvent`, not deduced."""
-    from invisible_puppeteer._juggler.keyboard import Keyboard
+    from invisible_core.juggler.keyboard import Keyboard
     c = _Fake()
-    Keyboard(c, "S").type("aZ1")
+    Keyboard(c, "S", acts=PageActs(1)).type("aZ1")
     up = [e for e in c.events if e["type"] == "keyup"]
     assert up and all("text" not in e for e in up)
 
@@ -453,7 +455,7 @@ def test_a_bare_string_does_NOT_go_through_the_option_filter():
     The mutation to reintroduce: passing `list(options)` instead of
     `_normalize_options(options)` in `select_option`.
     """
-    from invisible_puppeteer._juggler.actions import _normalize_options
+    from invisible_core.juggler.actions import _normalize_options
     assert _normalize_options(["b"]) == [{"valueOrLabel": "b"}]
     assert _normalize_options([{"value": "b"}]) == [{"value": "b"}]
     assert _normalize_options([{"index": 1}]) == [{"index": 1}]

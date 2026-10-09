@@ -50,8 +50,8 @@ def test_buttons_and_timeouts():
 
 
 def test_engine_failures_become_pyppeteers_exceptions():
-    from invisible_puppeteer._juggler.connection import ProtocolError, TargetClosedError
-    from invisible_puppeteer._juggler.injected import EvaluationError
+    from invisible_core.juggler.connection import ProtocolError, TargetClosedError
+    from invisible_core.juggler.injected import EvaluationError
     assert isinstance(_bridge.translate(EvaluationError("x")), errors.ElementHandleError)
     assert isinstance(_bridge.translate(TargetClosedError("x")), errors.NetworkError)
     assert isinstance(_bridge.translate(ProtocolError("a: no response in 2s")),
