@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-09
+
+### Changed
+- **The window a page reads is the one Windows Firefox draws.** Through
+  `invisible-core` 38.33.0 and the firefox-38 engine. A maximized window
+  answers `screenX` -8 and an `outerWidth` 16 wider than `screen.availWidth`
+  at 100%, as Windows Firefox does, where it answered 0 and the work area; its
+  content starts where retail's does at every display scale; a popup answers
+  its own size, frame and position, and one opened without a position is
+  placed where Windows Firefox places it.
+
+### Removed
+- **The pins `screen.chrome_w`, `screen.chrome_h`, `screen.window_x` and
+  `screen.window_y`.** The window follows `screen.dpr`, which takes 1, 1.25,
+  1.5 or 2.
+
 ## [0.2.1] - 2026-10-09
 
 ### Changed
