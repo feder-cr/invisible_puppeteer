@@ -15,10 +15,11 @@ the keyboard and the human rhythm (`connection`, `protocol`, `lifecycle`,
 
 What this client needs differently is an OPTION of the core's client, not a
 fork of it: `engine_approach=True`, because pyppeteer has no cursor of its own and
-the engine side draws every pointer approach; `dialog_opened`, so a click that
-opens `alert()` does not wait for an answer the suspended page cannot give;
-`glide_to` for the callers that drive the pointer directly; and the main-world
-helpers of `injected.py`. A copy of any core module in this package is the
+the engine side draws every pointer approach; `glide_to` for the callers that
+drive the pointer directly; and the main-world helpers of `injected.py`. (A
+fourth, `dialog_opened`, kept a click that opens `alert()` from waiting for an
+answer the suspended page could not give; since firefox-39 the engine ends
+that wait itself, for every client. [B230]) A copy of any core module in this package is the
 defect that move removed, and `tests/test_juggler_lives_in_the_core.py`
 refuses it.
 """
