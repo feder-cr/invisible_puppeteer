@@ -16,8 +16,8 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 
 from . import _bridge, errors
 from ._events import EventEmitter
-from ._juggler._profile import _domain_matches, _host_of
-from ._juggler.lifecycle import NavigationError
+from invisible_core.juggler import domain_matches, host_of
+from invisible_core.juggler.lifecycle import NavigationError
 from .element_handle import ElementHandle, JSHandle
 
 #: pyppeteer's `waitUntil` values, as the engine's four load states.
@@ -171,7 +171,7 @@ class Frame:
         carried into the utility world; call it off the loop."""
         if remote.get("subtype") == "node" and remote.get("objectId"):
             inj = self._engine.injected
-            adopted = inj.adopt(self._id, None, remote["objectId"])
+            adopted = inj.adopt(self._id, remote["objectId"])
             inj.release(inj.main_context(self._id), remote["objectId"])
             if adopted:
                 return ElementHandle(self, adopted)
@@ -1039,7 +1039,7 @@ class Page(EventEmitter):
         out = []
         for c in all_cookies:
             for url in urls:
-                if _domain_matches(c.get("domain") or "", _host_of(url)):
+                if domain_matches(c.get("domain") or "", host_of(url)):
                     item = dict(c)
                     item.setdefault("size", len(c.get("name", "")) + len(c.get("value", "")))
                     out.append(item)

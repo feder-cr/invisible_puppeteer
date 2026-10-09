@@ -4,17 +4,17 @@ build-backend = "hatchling.build"
 
 [project]
 name = "invisible_puppeteer"
-version = "0.2.2"
+version = "0.3.0"
 description = "pyppeteer's API for a patched Firefox with a deterministic stealth profile."
 readme = "README.md"
 requires-python = ">=3.11"
-# ⛔ TWO LICENSES, for the same reason invisible_playwright declares two:
-# `_juggler/injected.js` (selector engines and actionability, run in the page)
-# and `_juggler/keylayout.py` were extracted from Playwright's driver bundle,
-# which is Apache-2.0, and came here with the rest of invisible_playwright's
-# engine. See THIRD_PARTY.md. The pyppeteer API is re-implemented, not vendored:
-# no pyppeteer code is redistributed.
-license = "MIT AND Apache-2.0"
+# ONE LICENSE since 0.3.0. Until then this package carried its own copy of
+# the Juggler client, and with it two files extracted from Playwright's driver
+# bundle (`injected.js`, `keylayout.py`), which are Apache-2.0. The client
+# moved to invisible-core (decision D85), and the two files and their license
+# with it: the core declares them now. The pyppeteer API is re-implemented, not
+# vendored: no pyppeteer code is redistributed. See THIRD_PARTY.md.
+license = "MIT"
 authors = [{ name = "feder-cr", email = "85809106+feder-cr@users.noreply.github.com" }]
 keywords = ["puppeteer", "pyppeteer", "firefox", "stealth", "anti-detect", "automation"]
 classifiers = [
@@ -36,7 +36,7 @@ dependencies = [
     # see the long comment on that line in its pyproject. It is the ONE place
     # this package writes the expected core version: `_pin.py` reads it back
     # out of this distribution's own metadata at import time.
-    "invisible_core==38.33.0",
+    "invisible_core==38.34.0",
     # ⛔ NO `pyppeteer` AND NO `playwright`. The pyppeteer API is implemented here
     # on top of the engine; installing pyppeteer would not break anything, and
     # that is the problem - both would coexist and one of them would simply
@@ -72,7 +72,7 @@ packages = ["src/invisible_puppeteer"]
 exclude = ["*.bak", "*-bak"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/invisible_puppeteer", "tests", "README.md", "LICENSE", "LICENSE-APACHE", "THIRD_PARTY.md", "pyproject.toml"]
+include = ["src/invisible_puppeteer", "tests", "README.md", "LICENSE", "THIRD_PARTY.md", "pyproject.toml"]
 
 # Which pre-push gates this repository wants, as in invisible_playwright:
 # `.githooks/pre-push` hands over to invisible_core.hooks, and this block is
@@ -82,12 +82,7 @@ pytest = true
 pin = true
 release_tags = ["v"]
 
-# The per-repository half of the shared language gate
-# (`python -m invisible_core.english`). `injected.js` was extracted from the
-# upstream bundle, as in invisible_playwright; our own patches inside it are
-# found by the marker they carry.
-[tool.invisible.english]
-excluded = [
-    "src/invisible_puppeteer/_juggler/injected.js",
-]
-marker = "MODIFIED by invisible_playwright"
+# No `[tool.invisible.english]` block since 0.3.0: its one exclusion was
+# `injected.js`, extracted from the upstream bundle, and the file moved to
+# invisible-core with the Juggler client. Nothing here is vendored any more, so
+# the shared language gate (`python -m invisible_core.english`) reads it all.

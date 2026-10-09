@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-09
+
+### Changed
+- **The Juggler client comes from `invisible-core`** (38.34.0,
+  `invisible_core.juggler`), the one copy every invisible_ wrapper shares.
+  This package carried its own, taken from invisible-playwright on
+  2026-09-24, and it now has the fixes made there since:
+  - typing into a field waits the moment a person takes after focusing it,
+    and longer while the field is still changing, so a page that writes into
+    the field when it gets the focus no longer overwrites what is typed;
+  - a picked file reaches the input after the hesitation a person takes to
+    choose it;
+  - an action that needs no point on the screen (setting the files of a
+    hidden `<input type=file>` behind a styled button, focusing or
+    dispatching an event on a hidden element) no longer waits for the element
+    to become visible until it times out;
+  - every page of a session numbers its own clicks, fields and typed strings,
+    so two tabs never draw the same movement.
+- **A preference value that is not a bool, an int, a float or a string is
+  refused** with a `TypeError` naming it, instead of being written as its
+  text.
+- **The license is MIT only.** The two files taken from Playwright's driver
+  (Apache-2.0) moved to invisible-core with the client.
+
 ## [0.2.2] - 2026-10-09
 
 ### Changed

@@ -38,7 +38,7 @@ from .browser import Browser
 
 def _motion_available() -> bool:
     try:
-        from ._motion import CursorMotion  # noqa: F401
+        from invisible_core.juggler import CursorMotion  # noqa: F401
     except Exception:
         return False
     return True

@@ -18,8 +18,8 @@ import time
 
 import pytest
 
-from invisible_puppeteer._juggler.actions import Actions
-from invisible_puppeteer._juggler.connection import Connection, Interrupted
+from invisible_core.juggler.actions import Actions
+from invisible_core.juggler.connection import Connection, Interrupted
 
 pytestmark = pytest.mark.unit
 
@@ -113,11 +113,15 @@ def _actions(conn=None, injected=None, motion=True) -> Actions:
     a.keyboard = _Keyboard()
     a.position = (0.0, 0.0)
     a.pointer_persona = None
-    a._click_nonce = 0
+    # The core's Actions numbers every act of the page and is told who draws
+    # the approach; this client has no cursor of its own.
+    from invisible_core.juggler._behaviour import PageActs
+    a.acts = PageActs(1)
+    a.engine_approach = True
     if motion:
-        from invisible_puppeteer._behaviour import _sub_seed
-        from invisible_puppeteer._motion import CursorMotion
-        a.motion = CursorMotion(_sub_seed(42, "server:drag"))
+        from invisible_core.seedmix import sub_seed
+        from invisible_core.juggler._motion import CursorMotion
+        a.motion = CursorMotion(sub_seed(42, "server:drag"))
     return a
 
 
