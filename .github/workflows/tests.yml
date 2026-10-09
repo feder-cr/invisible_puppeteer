@@ -100,13 +100,16 @@ jobs:
       - name: Refuse a run in which the suite deselected itself
         shell: bash
         run: |
+          # The floor was 180 until 0.3.0, when the Juggler client's own tests
+          # left with the client for invisible-core: 85 run here now. Kept near
+          # 85% of that, so a selection that drops most of the suite still fails.
           python - <<'PY'
           import pathlib, re, sys
           text = pathlib.Path("tests-report.txt").read_text(encoding="utf-8", errors="ignore")
           m = re.search(r"(\d+) passed", text)
           passed = int(m.group(1)) if m else 0
-          if passed < 180:
-              print(f"only {passed} test(s) ran (expected 180+) - the selection "
+          if passed < 70:
+              print(f"only {passed} test(s) ran (expected 70+) - the selection "
                     f"dropped most of the suite and the exit code cannot see it",
                     file=sys.stderr)
               sys.exit(1)
