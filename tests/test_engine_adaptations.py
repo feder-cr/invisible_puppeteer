@@ -1,25 +1,26 @@
-"""The four places where this copy of the engine differs from invisible_playwright's.
+"""The places where this client drives the shared engine differently from invisible_playwright.
 
 Each test here fails on the ORIGINAL behaviour - it was run against the
 unadapted code first - and passes on the adaptation:
 
   1. every pointer approach is drawn by the engine (there, a client-side
      wrapper draws it and the engine sends one jump);
-  2. a dialog opened by the action ends the wait for `Page.pointerLanded`
-     (there, the wait runs its ten seconds);
   3. `fill("")` deletes the selected text, and leaves `change` to the blur
-     (there, the field keeps its value);
-  4. `Connection.send` can be interrupted by the caller.
+     (there, the field keeps its value).
+
+Two more lived here until firefox-39 and left for the engine: a dialog opened
+by the action ended the client's wait for `Page.pointerLanded`, and
+`Connection.send` could be interrupted by the caller for that wait. The landing
+now comes back with the dispatch, and the engine ends that wait itself when a
+dialog opens; the Playwright wrapper's e2e checks it against a real dialog
+(`test_a_click_that_opens_a_dialog_still_answers`). [B230]
 """
 from __future__ import annotations
 
-import threading
-import time
 
 import pytest
 
 from invisible_core.juggler.actions import Actions
-from invisible_core.juggler.connection import Connection, Interrupted
 
 pytestmark = pytest.mark.unit
 
@@ -42,27 +43,16 @@ class _Keyboard:
 
 
 class _Connection:
-    def __init__(self, landed_answer=True, block_landed=False):
+    def __init__(self):
         self.sent = []
-        self.block_landed = block_landed
-        self.landed_answer = landed_answer
 
-    def send(self, method, params=None, session=None, timeout=None, abort=None):
+    def send(self, method, params=None, session=None, timeout=None):
         self.sent.append((method, dict(params or {})))
         if method == "Page.dispatchMouseEvent":
-            return {"eventId": len(self.sent)}
-        if method == "Page.pointerLanded":
-            if self.block_landed:
-                # The page's process is inside alert(): no reply comes. The
-                # only way out is the caller's abort condition.
-                deadline = time.monotonic() + (timeout or 10)
-                while time.monotonic() < deadline:
-                    if abort is not None and abort():
-                        raise Interrupted("aborted")
-                    time.sleep(0.01)
-                raise RuntimeError("Page.pointerLanded: no response")
-            return {"landings": [{"type": t, "landed": True, "on": ""}
-                                 for t in params["types"]]}
+            if "landsOn" in (params or {}):
+                return {"landing": {"type": params["type"], "landed": True,
+                                    "seen": 1, "on": ""}}
+            return {}
         if method == "Page.getContentQuads":
             x, y = POINT
             return {"quads": [{"p1": {"x": x - 10, "y": y - 5},
@@ -148,17 +138,6 @@ def test_a_hover_leaves_its_last_move_to_the_commit():
     assert len(moves) > 3 and len(at_point) == 1
 
 
-def test_a_dialog_opened_by_the_click_ends_the_landing_wait():
-    conn = _Connection(block_landed=True)
-    a = _actions(conn=conn)
-    opened = threading.Event()
-    a.dialog_opened = opened.is_set
-    threading.Timer(0.2, opened.set).start()
-    started = time.monotonic()
-    a.click("#b", timeout=2.0)
-    assert time.monotonic() - started < 5, "the wait ran its full timeout"
-
-
 def test_clearing_a_field_deletes_the_selected_text():
     """The Delete is the whole of it. `change` used to be requested from the
     engine as well, while the field still had focus: Firefox fired a second
@@ -170,31 +149,3 @@ def test_clearing_a_field_deletes_the_selected_text():
     sent = [m for m, _ in a.c.sent]
     assert not {"Page.dispatchTrustedInputEvents", "Page.setUserInput",
                 "Page.selectOptions"} & set(sent), sent
-
-
-class _Pipe:
-    """Two ends of an OS pipe nobody answers on."""
-
-
-def test_send_can_be_interrupted_by_the_caller():
-    import os
-    r1, w1 = os.pipe()
-    r2, w2 = os.pipe()
-    conn = Connection(w1, r2)
-    try:
-        flag = threading.Event()
-        threading.Timer(0.1, flag.set).start()
-        with pytest.raises(Interrupted):
-            conn.send("Runtime.evaluate", {}, timeout=5, abort=flag.is_set)
-    finally:
-        # The write end first: the reader thread then reads end-of-file and
-        # leaves, instead of blocking the close on Windows.
-        os.close(w2)
-        try:
-            conn.close(timeout=0.5)
-        except Exception:
-            pass
-        try:
-            os.close(r1)
-        except OSError:
-            pass

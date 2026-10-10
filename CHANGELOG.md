@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-10
+
+### Fixed
+- **Pointer actions answer once the page has handled the event.** With the
+  firefox-39 engine, a press, a move or a release returns after the page's
+  listeners have run. Before, the next call could reach the page first: under
+  load a short drag-and-drop lost its drop, and a script read right after a
+  double click could count one click short.
+
+### Changed
+- **A click that opens `alert()` is handled by the engine.** The engine ends
+  its own wait when a dialog opens, so this package no longer carries a hook
+  for it.
+
 ## [0.3.0] - 2026-10-09
 
 ### Changed
