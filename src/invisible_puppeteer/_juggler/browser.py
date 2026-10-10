@@ -14,7 +14,6 @@ has, and that reason did not change when the code was copied.
 from __future__ import annotations
 
 import itertools
-import tempfile
 import threading
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -23,7 +22,7 @@ from invisible_core import SessionLocale, parse_proxy
 
 from invisible_core.juggler import connection
 from invisible_core import write_user_js
-from invisible_core.juggler import PageActs, read_version, remove_profile
+from invisible_core.juggler import PageActs, SessionFiles, read_version
 from invisible_core.juggler.actions import Actions
 from invisible_core.juggler.injected import InjectedScript
 from invisible_core.juggler.lifecycle import Lifecycle
@@ -128,36 +127,37 @@ def launch(executable: str, *, prefs: Optional[Dict] = None,
 
     ⛔ WHO MAKES THE PROFILE TAKES IT AWAY - AND ONLY THAT ONE. A caller's
     `profile_dir` is theirs and survives the session by definition; a directory
-    invented here is ours and is removed by `Browser.close()`. Measured on
+    invented here is ours, and so is the browser's temporary directory. Both
+    are the core's `SessionFiles`, removed by `Browser.close()` once the
+    browser and the children that outlive it are gone (B223: on Windows a
+    session longer than a minute left its profile behind `pingsender.exe`;
+    B267: a short session left 4 MB certificate bundles in %TEMP%). Measured on
     2026-08-28, after one day of development: 136 leftover
     `invisible_profile_*` directories, 5.0 GB. Nothing failed, nothing warned.
     """
-    ours = profile_dir is None
-    profile = profile_dir or tempfile.mkdtemp(prefix="invisible_profile_")
-    # ⛔ THE TYPING SEED TRAVELS IN THE PREFS AND IS TAKEN OUT AGAIN HERE,
-    # before a single byte reaches the profile. It is not a browser
-    # preference: the engine never reads it, and leaving it in `user.js` would
-    # write a session identifier onto disk for no reader at all.
-    browser_prefs, session_seed, motion_budget_s = take_session_motion(
-        prefs or {})
-    write_user_js(profile, browser_prefs)
-    # ⛔ PARSED BEFORE THE BROWSER STARTS, so a proxy we cannot express refuses
-    # the launch instead of leaving a process running without one.
-    proxy_command = None
-    if proxy:
-        try:
-            proxy_command = parse_proxy(proxy).as_engine_command()
-        except ValueError as exc:
-            if ours:
-                remove_profile(profile)
-            raise EngineError("the proxy cannot be applied: %s" % exc)
+    files = SessionFiles(profile_dir, env)
     try:
-        conn = connection.launch(executable, profile, headless=bool(headless),
-                                 env=env, argv_extra=list(args or []),
+        # ⛔ THE TYPING SEED TRAVELS IN THE PREFS AND IS TAKEN OUT AGAIN HERE,
+        # before a single byte reaches the profile. It is not a browser
+        # preference: the engine never reads it, and leaving it in `user.js`
+        # would write a session identifier onto disk for no reader at all.
+        browser_prefs, session_seed, motion_budget_s = take_session_motion(
+            prefs or {})
+        write_user_js(files.profile, browser_prefs)
+        # ⛔ PARSED BEFORE THE BROWSER STARTS, so a proxy we cannot express
+        # refuses the launch instead of leaving a process running without one.
+        proxy_command = None
+        if proxy:
+            try:
+                proxy_command = parse_proxy(proxy).as_engine_command()
+            except ValueError as exc:
+                raise EngineError("the proxy cannot be applied: %s" % exc)
+        conn = connection.launch(executable, files.profile,
+                                 headless=bool(headless), env=files.env,
+                                 argv_extra=list(args or []),
                                  ready_timeout=ready_timeout)
     except BaseException:
-        if ours:
-            remove_profile(profile)
+        files.remove()
         raise
     # ⛔ AND SENT BEFORE ANY PAGE EXISTS. Until 2026-08-30 `proxy=` was
     # accepted and dropped for every scheme the engine prefs do not carry: a
@@ -170,14 +170,13 @@ def launch(executable: str, *, prefs: Optional[Dict] = None,
             conn.send("Browser.setBrowserProxy", proxy_command, timeout=10)
         except BaseException as exc:
             conn.close()
-            if ours:
-                remove_profile(profile)
+            files.remove()
             raise EngineError(
                 "the engine refused the proxy, so the browser was closed "
                 "rather than left running without one: %s" % exc)
     return Browser(conn, read_version(executable),
                    session_seed=session_seed, motion_budget_s=motion_budget_s,
-                   profile_dir=profile if ours else None)
+                   files=files)
 
 
 # ── browser ─────────────────────────────────────────────────────────────────
@@ -226,7 +225,7 @@ class Browser:
 
     def __init__(self, conn: Any, version: str, *, session_seed: Any = None,
                  motion_budget_s: Any = None,
-                 profile_dir: Optional[str] = None) -> None:
+                 files: Optional[SessionFiles] = None) -> None:
         self.conn = conn
         self.version = version
         #: ⛔ THE SESSION'S SEED, and the reason it lives on the BROWSER rather
@@ -242,9 +241,10 @@ class Browser:
         #: field or typed string. The Playwright wrapper numbers its pages the
         #: same way; a counter per page restarted at 1 in every tab.
         self._page_numbers = itertools.count(1)
-        #: The profile THIS object must remove on close: set only when the
-        #: launch invented it. A caller's profile is never here.
-        self._owned_profile = profile_dir
+        #: The directories THIS object takes away on close, from `launch`. It
+        #: never removes a profile the caller named: `SessionFiles` knows
+        #: which one it invented.
+        self._files = files
         self._closed = False
         self._sessions: Dict[str, str] = {}
         #: targetId -> the engine's `targetInfo` (its context, its opener).
@@ -524,14 +524,13 @@ class Browser:
 
     # ── the end ─────────────────────────────────────────────────────────────
     def close(self) -> None:
-        """Close the browser, THEN take away a profile this session invented.
+        """Close the browser, THEN take away the session's directories.
 
         ⛔ THE ORDER IS THE POINT. The browser holds a lock on its profile
         until it is gone, and removing the directory first fails on Windows -
-        silently, because `remove_profile` must never raise. Until 2026-09-24
-        the two were separate shutdown hooks in invisible_playwright's server,
-        run in REVERSE registration order, and the removal was registered
-        second: it ran first. One method doing both, in order, is the fix.
+        silently, because a removal must never raise. And the browser is not
+        the last process: `SessionFiles.remove` ends the children that outlive
+        it before it removes anything (B223).
 
         Idempotent: an adapter may reach this from more than one way out.
         """
@@ -542,8 +541,8 @@ class Browser:
             self.conn.close()
         except Exception:
             pass
-        if self._owned_profile:
-            remove_profile(self._owned_profile)
+        if self._files is not None:
+            self._files.remove()
 
 
 # ── context ─────────────────────────────────────────────────────────────────
