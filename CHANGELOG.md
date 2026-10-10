@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+- **A session no longer leaves its temporary profile behind.** On Windows a
+  session longer than a minute left an `invisible_profile_*` directory in
+  `%TEMP%`, holding an empty `saved-telemetry-pings`: the profile was removed
+  right after the browser, while the `pingsender.exe` it starts at exit still
+  held a file in it. The session's directories (the core's `SessionFiles`)
+  are now removed after every process of the session has ended, and a new
+  session sweeps what a killed one left.
+- **The browser's temporary files go with the session.** Firefox wrote into
+  the system temporary directory, and a short session cut off its cleanup: a
+  70 s session left a 4 MB certificate bundle in `%TEMP%`. The browser now
+  gets a temporary directory of its own, removed with the profile.
+
 ## [0.3.1] - 2026-10-10
 
 ### Fixed
