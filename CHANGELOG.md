@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-10
+
 ### Fixed
 - **Pointer actions answer once the page has handled the event.** With the
   firefox-39 engine, a press, a move or a release returns after the page's
