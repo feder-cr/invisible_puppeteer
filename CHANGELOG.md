@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-10-11
+
+### Fixed
+- **The shutdown pings leave by the session's proxy.** At the end of a session
+  longer than a minute, Firefox posts its shutdown telemetry from a separate
+  process. That process took its network settings from the machine, so a
+  session behind a SOCKS5 or HTTP proxy sent those pings from the machine's own
+  address. With the firefox-40 engine (invisible-core 40.35.0) they go through
+  the same proxy as the session, or directly when the session has none, and the
+  session waits for them to finish before it removes its files: closing a long
+  session takes about a second more.
+
 ## [0.3.2] - 2026-10-10
 
 ### Fixed
