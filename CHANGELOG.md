@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-10-11
+
+The pin moves to invisible-core 41.35.0, which seals the firefox-41 engine.
+
 ### Fixed
+- **On Linux a window covered by another one is not reported as hidden**, the
+  same as on Windows: pages in a visible session covered by a second session's
+  window read `document.visibilityState === "hidden"` and had their timers and
+  animation frames throttled.
 - **A launch gets the whole timeout it was given.** Only the wait for the
   browser to start had it; the proxy command and the last startup step after
   it had 10 and 30 seconds of their own. On a loaded machine the proxy command
