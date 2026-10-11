@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+- **A launch gets the whole timeout it was given.** Only the wait for the
+  browser to start had it; the proxy command and the last startup step after
+  it had 10 and 30 seconds of their own. On a loaded machine the proxy command
+  could go unanswered for 10 seconds and the launch failed with "the engine
+  refused the proxy" while it still had time. One deadline now covers the
+  whole startup, and running past it raises a `TimeoutError` instead of
+  claiming a refusal. A launch that fails after the browser started now closes
+  it and removes the session's files.
+
 ## [0.3.3] - 2026-10-11
 
 ### Fixed

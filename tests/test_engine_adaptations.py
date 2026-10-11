@@ -46,6 +46,9 @@ class _Connection:
     def __init__(self):
         self.sent = []
 
+    def startup_send(self, method, params=None):
+        return self.send(method, params, timeout=None)
+
     def send(self, method, params=None, session=None, timeout=None):
         self.sent.append((method, dict(params or {})))
         if method == "Page.dispatchMouseEvent":

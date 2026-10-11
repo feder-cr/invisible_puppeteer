@@ -115,7 +115,7 @@ def launch(executable: str, *, prefs: Optional[Dict] = None,
            env: Optional[Dict[str, str]] = None,
            args: Optional[List[str]] = None, headless: bool = True,
            proxy: Optional[Dict[str, str]] = None,
-           ready_timeout: float = 60.0) -> "Browser":
+           ready_timeout: Optional[float] = 60.0) -> "Browser":
     """Start the patched Firefox and hand back a `Browser` ready to open pages.
 
     `env` is the WHOLE environment the browser gets, or None to inherit this
@@ -152,31 +152,39 @@ def launch(executable: str, *, prefs: Optional[Dict] = None,
                 proxy_command = parse_proxy(proxy).as_engine_command()
             except ValueError as exc:
                 raise EngineError("the proxy cannot be applied: %s" % exc)
+        # ⛔ THE PROXY IS SET BY THE CORE'S `launch`, before any page exists,
+        # and a proxy the engine refuses closes the browser there. ONE
+        # DEADLINE, `ready_timeout`, bounds the readiness, the proxy and the
+        # `Browser.enable` the `Browser` sends through `startup_send`. Until
+        # 0.3.4 this function sent the proxy itself with 10 s of its own, as
+        # the Playwright wrapper did, and on a loaded host a proxy command
+        # unanswered in 10 s was reported as "the engine refused the proxy"
+        # while the launch still had time. A startup past its deadline is the
+        # core's `ReplyTimeout`, a TimeoutError, and goes out as one.
         conn = connection.launch(executable, files.profile,
                                  headless=bool(headless), env=files.env,
                                  argv_extra=list(args or []),
-                                 ready_timeout=ready_timeout)
+                                 ready_timeout=ready_timeout,
+                                 proxy=proxy_command)
+    except connection.ReplyTimeout:
+        files.remove()
+        raise
+    except connection.ProtocolError as exc:
+        files.remove()
+        raise EngineError(str(exc)) from exc
     except BaseException:
         files.remove()
         raise
-    # ⛔ AND SENT BEFORE ANY PAGE EXISTS. Until 2026-08-30 `proxy=` was
-    # accepted and dropped for every scheme the engine prefs do not carry: a
-    # page resolved its own DNS and went out on the host address while the
-    # session's timezone, locale and WebRTC candidate had all been resolved
-    # THROUGH the proxy. Announcing one country and connecting from another is
-    # worse than having no proxy at all.
-    if proxy_command is not None:
-        try:
-            conn.send("Browser.setBrowserProxy", proxy_command, timeout=10)
-        except BaseException as exc:
-            conn.close()
-            files.remove()
-            raise EngineError(
-                "the engine refused the proxy, so the browser was closed "
-                "rather than left running without one: %s" % exc)
-    return Browser(conn, read_version(executable),
-                   session_seed=session_seed, motion_budget_s=motion_budget_s,
-                   files=files)
+    # ⛔ A LAUNCH THAT FAILS FROM HERE ON CLOSES THE BROWSER IT STARTED, and
+    # takes its files: a `Browser` that never came back is one nobody closes.
+    try:
+        return Browser(conn, read_version(executable),
+                       session_seed=session_seed,
+                       motion_budget_s=motion_budget_s, files=files)
+    except BaseException:
+        conn.close()
+        files.remove()
+        raise
 
 
 # ── browser ─────────────────────────────────────────────────────────────────
@@ -283,8 +291,9 @@ class Browser:
         # engine start announcing targets, and the recorder must already be
         # listening when the first one arrives.
         conn.add_listener(self._route_browser_event)
-        conn.send("Browser.enable", {"attachToDefaultContext": True},
-                  timeout=30)
+        # The last step of starting the browser, under what is left of the
+        # launch's `ready_timeout`, not a bound of its own (30 s until 0.3.4).
+        conn.startup_send("Browser.enable", {"attachToDefaultContext": True})
 
     # ── sessions ────────────────────────────────────────────────────────────
     def _route_browser_event(self, method: str, params: Dict, session) -> None:
