@@ -18,6 +18,7 @@ from . import _bridge, errors
 from ._events import EventEmitter
 from invisible_core.juggler import domain_matches, host_of
 from invisible_core.juggler.deadline import Deadline
+from invisible_core.juggler.injected import ContextDestroyed
 from invisible_core.juggler.lifecycle import NavigationError, NavigationInterrupted
 from .element_handle import ElementHandle, JSHandle
 
@@ -109,7 +110,13 @@ class Frame:
         ⛔ THE CALLER'S FUNCTION IS THE ONLY CODE THAT RUNS IN THE PAGE. The
         arguments go in as protocol values; an ElementHandle, which lives in
         the utility world, crosses with `Page.adoptNode`; the result is either
-        serialized by the engine's sandbox (by value) or kept as a handle."""
+        serialized by the engine's sandbox (by value) or kept as a handle.
+
+        ⛔ AND IT IS SENT ONCE. A world that went under it does not say whether
+        it ran (a function waiting on a promise when its page navigated is
+        refused by the new page in the same words as one that never ran), and
+        until 0.3.7 it was sent again into the new page, which ran it twice
+        ([B285]). pyppeteer raises NetworkError at once, and so does this."""
         engine = self._engine
         inj = engine.injected
 
@@ -144,7 +151,7 @@ class Frame:
             finally:
                 for oid in owned:
                     inj.release(ctx, oid)
-        return inj.in_current_world(lambda _: attempt(), timeout=30.0)
+        return attempt()
 
     async def evaluate(self, pageFunction: str, *args: Any, force_expr: bool = False) -> Any:
         """Evaluates a function (called with ``args``) or an expression in the
@@ -330,12 +337,25 @@ class Frame:
         interval = (float(polling) / 1000.0 if isinstance(polling, (int, float))
                     else 0.05)
         deadline = Deadline(_bridge.ms(options))
+
+        def poll() -> Optional[JSHandle]:
+            # ⛔ A NAVIGATION DOES NOT END THE WAIT: pyppeteer's WaitTask runs
+            # again in the new document. The predicate is sent once per turn,
+            # and a world that went under it means the next turn asks the new
+            # document ([B285]).
+            try:
+                remote = self._evaluate_sync(pageFunction, args, by_value=False,
+                                             force_expr=False)
+            except ContextDestroyed:
+                return None
+            if "objectId" in remote or _bridge.value_of(remote):
+                return self._handle_from_remote(remote)
+            return None
+
         while True:
             try:
-                handle = await self.evaluateHandle(pageFunction, *args)
-                remote = handle._remote
-                truthy = bool("objectId" in remote or _bridge.value_of(remote))
-                if truthy:
+                handle = await _bridge.run(poll)
+                if handle is not None:
                     return handle
             except errors.ElementHandleError:
                 pass

@@ -58,10 +58,12 @@ def test_engine_failures_become_pyppeteers_exceptions():
     assert isinstance(_bridge.translate(TargetClosedError("x")), errors.NetworkError)
     assert isinstance(_bridge.translate(ProtocolError("a: no response in 2s")),
                       errors.TimeoutError)
-    # A vanished world comes typed from the core, and is pyppeteer's sentence.
+    # A vanished world comes typed from the core, and is pyppeteer's sentence
+    # on pyppeteer's class: `_rewriteError` raises it as the NetworkError the
+    # protocol error was.
     from invisible_core.juggler.injected import ContextDestroyed
     gone = _bridge.translate(ContextDestroyed("Execution context was destroyed"))
-    assert isinstance(gone, errors.ElementHandleError)
+    assert isinstance(gone, errors.NetworkError)
     assert "most likely because of a navigation" in str(gone)
     # Another document committed in ours' place: a failed navigation, in the
     # core's words, which name both addresses (invisible-core 41.36.0).

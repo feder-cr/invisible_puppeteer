@@ -110,8 +110,11 @@ def translate(error: BaseException) -> BaseException:
     if isinstance(error, TargetClosedError):
         return errors.NetworkError("Protocol error: Target closed. %s" % text)
     if isinstance(error, ContextDestroyed):
-        # pyppeteer's own sentence for this, on the same class.
-        return errors.ElementHandleError(
+        # pyppeteer's own sentence for this, on its class: the protocol error
+        # of `Connection.send` is a NetworkError, and `_rewriteError` in
+        # `execution_context.py` raises the sentence on the same type. Until
+        # 0.3.7 it was an ElementHandleError here.
+        return errors.NetworkError(
             "Execution context was destroyed, most likely because of a "
             "navigation.")
     if isinstance(error, EvaluationError):

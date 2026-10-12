@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-10-12
+
+The pin moves to invisible-core 41.38.0.
+
+### Fixed
+- **The caller's function runs once when its page navigates while it
+  waits.** A function passed to `evaluate` or `evaluateHandle` that was
+  waiting on a promise when its page navigated was sent again into the page
+  that replaced it, so a function with an effect ran twice. It now raises
+  `NetworkError` at once, "Execution context was destroyed, most likely
+  because of a navigation.", as pyppeteer does, and is never sent again.
+  `waitForFunction` keeps polling on the new page.
+- **A vanished execution context is a `NetworkError`**, pyppeteer's class for
+  it; it was an `ElementHandleError`.
+
 ## [0.3.6] - 2026-10-12
 
 The pin moves to invisible-core 41.37.0.
