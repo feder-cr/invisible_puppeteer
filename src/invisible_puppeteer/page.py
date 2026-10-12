@@ -17,6 +17,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 from . import _bridge, errors
 from ._events import EventEmitter
 from invisible_core.juggler import domain_matches, host_of
+from invisible_core.juggler.deadline import Deadline
 from invisible_core.juggler.lifecycle import NavigationError
 from .element_handle import ElementHandle, JSHandle
 
@@ -92,12 +93,10 @@ class Frame:
     def childFrames(self) -> List["Frame"]:
         return [self._page._frame(fid) for fid, f in
                 list(self._engine.lifecycle.frames.items())
-                if getattr(f, "parent", None) == self._id
-                and fid not in self._page._gone]
+                if getattr(f, "parent", None) == self._id]
 
     def isDetached(self) -> bool:
-        return (self._id not in self._engine.lifecycle.frames
-                or self._id in self._page._gone)
+        return self._id not in self._engine.lifecycle.frames
 
     async def executionContext(self) -> ExecutionContext:
         return self._execution_context
@@ -119,11 +118,9 @@ class Frame:
             owned: List[str] = []
             try:
                 if force_expr or not _bridge.is_jsfunc(page_function):
-                    return inj._result(engine.conn.send(
-                        "Runtime.evaluate",
-                        {"executionContextId": ctx, "expression": page_function,
-                         "returnByValue": by_value},
-                        session=engine.session, timeout=self._page._timeout_s))
+                    return inj.evaluate_raw(ctx, page_function,
+                                            by_value=by_value,
+                                            timeout=self._page._timeout_s)
                 protocol_args = []
                 for a in args:
                     if isinstance(a, ElementHandle):
@@ -306,7 +303,7 @@ class Frame:
     async def _wait_for_element(self, by: str, value: str, options: dict):
         visible = bool(options.get("visible"))
         hidden = bool(options.get("hidden"))
-        deadline = time.monotonic() + _bridge.ms(options)
+        deadline = Deadline(_bridge.ms(options))
         engine = self._engine
         while True:
             found = await self._query(None, by, value)
@@ -320,7 +317,7 @@ class Frame:
                     return None
             elif element is not None and (not visible or shown):
                 return element
-            if time.monotonic() > deadline:
+            if deadline.passed():
                 what = "selector" if by == "css" else "XPath"
                 raise errors.TimeoutError(
                     'Waiting for %s "%s" failed: timeout %sms exceeds.'
@@ -333,7 +330,7 @@ class Frame:
         polling = options.get("polling", "raf")
         interval = (float(polling) / 1000.0 if isinstance(polling, (int, float))
                     else 0.05)
-        deadline = time.monotonic() + _bridge.ms(options)
+        deadline = Deadline(_bridge.ms(options))
         while True:
             try:
                 handle = await self.evaluateHandle(pageFunction, *args)
@@ -343,7 +340,7 @@ class Frame:
                     return handle
             except errors.ElementHandleError:
                 pass
-            if time.monotonic() > deadline:
+            if deadline.passed():
                 raise errors.TimeoutError(
                     "Waiting for function failed: timeout %sms exceeds."
                     % int(options.get("timeout", 30000)))
@@ -673,12 +670,17 @@ class Page(EventEmitter):
         self._viewport: Optional[dict] = None
         self._requests: Dict[str, Request] = {}
         self._navigations: Dict[str, Request] = {}
-        #: Frames of documents this page has left. See `_forget_children`.
-        self._gone: set = set()
         self.keyboard = Keyboard(self)
         self.mouse = Mouse(self)
         self.touchscreen = Touchscreen(self)
         engine_page.on_event(self._on_event)
+        # ⛔ THE FRAME TREE IS THE LIFECYCLE'S. It says when a frame is born
+        # and when it is gone, including the children of a document that is
+        # replaced, which the engine does not report after a back-forward cache
+        # restore or a move to another process. Until 0.3.5 this page kept a
+        # set of its own frames "of documents it had left" for the first case,
+        # and announced the main frame again at every cross-process navigation.
+        engine_page.lifecycle.announce = self._on_lifecycle
 
     # ── plumbing ────────────────────────────────────────────────────────────
     def _frame(self, frame_id: str) -> Frame:
@@ -723,14 +725,7 @@ class Page(EventEmitter):
             if name:
                 self.emit_threadsafe(name)
         elif method == "Page.navigationCommitted":
-            self._forget_children(params["frameId"])
             self.emit_threadsafe("framenavigated", self._frame(params["frameId"]))
-        elif method == "Page.frameAttached":
-            self.emit_threadsafe("frameattached", self._frame(params["frameId"]))
-        elif method == "Page.frameDetached":
-            frame = self._frames.pop(params.get("frameId"), None)
-            if frame is not None:
-                self.emit_threadsafe("framedetached", frame)
         elif method == "Runtime.console":
             args = params.get("args") or []
             text = " ".join(str(_bridge.value_of(a)) if "objectId" not in a
@@ -772,24 +767,19 @@ class Page(EventEmitter):
                 request._failure = params.get("errorCode") or "failed"
                 self.emit_threadsafe("requestfailed", request)
 
-    def _forget_children(self, frame_id: str) -> None:
-        """A frame that commits a new document has none of its old children.
-
-        ⛔ MEASURED, NOT ASSUMED: after a history navigation served from the
-        back-forward cache, the engine never sent `Page.frameDetached` for the
-        old document's iframe, so the frame stayed in the lifecycle with a
-        world that no longer existed, and a query in it waited its full
-        timeout. The children a frame has at the moment it commits belong to
-        the document being replaced; the new document's frames attach after."""
-        frames = self._engine.lifecycle.frames
-        stack = [frame_id]
-        while stack:
-            parent = stack.pop()
-            for fid, f in list(frames.items()):
-                if getattr(f, "parent", None) == parent and fid not in self._gone:
-                    self._gone.add(fid)
-                    self._frames.pop(fid, None)
-                    stack.append(fid)
+    def _on_lifecycle(self, what: str, frame_id: str,
+                      url: Optional[str] = None) -> None:
+        """The lifecycle's announcements: a frame born, a frame gone. Called on
+        the reader thread under the lifecycle's lock, so each is handed to the
+        loop as it comes."""
+        if what == "frameAttached":
+            # Never the main frame: the lifecycle announces an id it sees for
+            # the first time, and this page is built after its main frame.
+            self.emit_threadsafe("frameattached", self._frame(frame_id))
+        elif what == "frameDetached":
+            frame = self._frames.pop(frame_id, None)
+            if frame is not None:
+                self.emit_threadsafe("framedetached", frame)
 
     def _navigation_response(self, navigation_id: Optional[str]) -> Optional[Response]:
         if not navigation_id:
@@ -812,8 +802,7 @@ class Page(EventEmitter):
 
     @property
     def frames(self) -> List[Frame]:
-        return [self._frame(fid) for fid in list(self._engine.lifecycle.frames)
-                if fid not in self._gone]
+        return [self._frame(fid) for fid in list(self._engine.lifecycle.frames)]
 
     @property
     def workers(self) -> list:

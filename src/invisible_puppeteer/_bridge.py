@@ -18,7 +18,8 @@ from typing import Any, List, Optional
 
 from . import errors
 from invisible_core.juggler.connection import ProtocolError, TargetClosedError
-from invisible_core.juggler.injected import EvaluationError
+from invisible_core.juggler.deadline import Deadline
+from invisible_core.juggler.injected import ContextDestroyed, EvaluationError
 
 #: Runs in the utility world. `root` is an element or null for the document.
 FIND_JS = """(root, by, value) => {
@@ -102,14 +103,6 @@ def button(name: Optional[str]) -> int:
 
 
 # ── errors ──────────────────────────────────────────────────────────────────
-_CONTEXT_GONE = ("Failed to find execution context", "Cannot find context",
-                 "execution context was destroyed", "Execution context was destroyed")
-
-
-def is_context_gone(error: BaseException) -> bool:
-    return any(mark in str(error) for mark in _CONTEXT_GONE)
-
-
 def translate(error: BaseException) -> BaseException:
     """The pyppeteer exception an engine failure stands for."""
     if isinstance(error, (errors.PyppeteerError, errors.TimeoutError)):
@@ -117,6 +110,11 @@ def translate(error: BaseException) -> BaseException:
     text = str(error)
     if isinstance(error, TargetClosedError):
         return errors.NetworkError("Protocol error: Target closed. %s" % text)
+    if isinstance(error, ContextDestroyed):
+        # pyppeteer's own sentence for this, on the same class.
+        return errors.ElementHandleError(
+            "Execution context was destroyed, most likely because of a "
+            "navigation.")
     if isinstance(error, EvaluationError):
         return errors.ElementHandleError("Evaluation failed: %s" % text)
     if isinstance(error, TimeoutError):
@@ -127,7 +125,7 @@ def translate(error: BaseException) -> BaseException:
     if isinstance(error, ProtocolError):
         if "no response in" in text:
             return errors.TimeoutError(text)
-        if "Cannot find object" in text or is_context_gone(error):
+        if "Cannot find object" in text:
             return errors.ElementHandleError(
                 "Node is detached from document (%s)" % text)
         return errors.NetworkError("Protocol error: %s" % text)
@@ -150,24 +148,34 @@ async def run(fn, *args, **kwargs):
         raise translate(e) from None
 
 
-def across_navigation(fn, *, timeout: float = 30.0):
-    """A page-level read, repeated while a navigation the page started on its
-    own replaces the frame's worlds and the registry still names the old one."""
-    deadline = time.monotonic() + timeout
+def across_navigation(fn, *, timeout: Optional[float] = 30.0):
+    """A page-level sequence, made again while a navigation the page started on
+    its own replaces the frame's worlds.
+
+    ⛔ IT READS THE TYPE, NOT THE SENTENCE. The core says a world has gone with
+    `ContextDestroyed`, from the one place that sends commands to a context;
+    until 0.3.5 this matched four spellings of the engine's text. A command
+    refused that way never ran, so `fn` can be made again; one that failed for
+    any other reason (an element of the old document, `Cannot find object`) is
+    the caller's answer at once, not a loop to the timeout."""
+    deadline = Deadline(timeout)
     while True:
         try:
             return fn()
-        except Exception as e:
-            if not is_context_gone(e) or time.monotonic() > deadline:
+        except ContextDestroyed:
+            if deadline.passed():
                 raise
             time.sleep(0.05)
 
 
 def ms(options: dict, key: str = "timeout", default: float = 30000) -> float:
-    """A pyppeteer timeout (milliseconds, 0 = none) as seconds for the engine."""
+    """A pyppeteer timeout (milliseconds, 0 = none) as seconds for the engine:
+    None for none, which every wait of the core reads as no limit (its
+    `Deadline`). Until 0.3.5 it was 24 hours, a number standing for a limit
+    that is not there."""
     value = options.get(key, default)
     if value in (None, 0):
-        return 24 * 3600.0
+        return None
     return float(value) / 1000.0
 
 
