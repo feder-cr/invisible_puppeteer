@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-10-12
+
+The pin moves to invisible-core 41.36.0.
+
+### Fixed
+- **A page that replaces itself right after it loads no longer breaks the
+  next call.** A read made while the page was moving on failed with the
+  engine's raw "Failed to find execution context"; the core now makes such a
+  read again on the page that took its place, and says so with its own error
+  type when it cannot (an element of the page that is gone).
+- **Frames follow the documents.** After a navigation that moved the page to
+  another browser process, the old document's iframes stayed listed.
+
 ## [0.3.4] - 2026-10-11
 
 The pin moves to invisible-core 41.35.0, which seals the firefox-41 engine.
