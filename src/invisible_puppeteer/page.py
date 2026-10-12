@@ -144,7 +144,7 @@ class Frame:
             finally:
                 for oid in owned:
                     inj.release(ctx, oid)
-        return _bridge.across_navigation(attempt)
+        return inj.in_current_world(lambda _: attempt(), timeout=30.0)
 
     async def evaluate(self, pageFunction: str, *args: Any, force_expr: bool = False) -> Any:
         """Evaluates a function (called with ``args``) or an expression in the
@@ -177,8 +177,9 @@ class Frame:
     # ── finding ─────────────────────────────────────────────────────────────
     async def _query(self, root: Optional[str], by: str, value: str) -> List[ElementHandle]:
         def run():
-            return _bridge.across_navigation(
-                lambda: _bridge.query(self._engine, self._id, root, by, value))
+            return self._engine.injected.in_current_world(
+                lambda _: _bridge.query(self._engine, self._id, root, by, value),
+                timeout=30.0)
         oids = await _bridge.run(run)
         return [ElementHandle(self, oid) for oid in oids]
 
@@ -218,8 +219,7 @@ class Frame:
 
     # ── the document ────────────────────────────────────────────────────────
     async def content(self) -> str:
-        return await _bridge.run(lambda: _bridge.across_navigation(
-            lambda: self._engine.injected.content(self._id)))
+        return await _bridge.run(lambda: self._engine.injected.content(self._id))
 
     async def setContent(self, html: str) -> None:
         """Replaces the document with ``html``.
@@ -236,8 +236,7 @@ class Frame:
         await _bridge.run(run)
 
     async def title(self) -> str:
-        return await _bridge.run(lambda: _bridge.across_navigation(
-            lambda: self._engine.injected.title(self._id))) or ""
+        return await _bridge.run(lambda: self._engine.injected.title(self._id)) or ""
 
     async def addScriptTag(self, options: Dict = None, **kwargs: str) -> ElementHandle:
         options = _bridge.merge(options, kwargs)

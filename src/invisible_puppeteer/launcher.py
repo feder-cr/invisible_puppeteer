@@ -31,7 +31,7 @@ from invisible_core._fpforge import Profile, generate_profile
 from . import _session, errors
 from ._engine import assert_wire_version, resolve_executable
 from ._humanize import ENGINE_BINARY, resolve_cursor_engine
-from ._juggler.browser import launch as launch_engine
+from invisible_core.juggler.instance import launch as launch_engine
 from ._reaper import SessionToken, guard_for
 from .browser import Browser
 

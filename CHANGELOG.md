@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-10-12
+
+The pin moves to invisible-core 41.37.0.
+
+### Fixed
+- **No time limit of the engine's own.** Making a context, opening a page,
+  closing one and applying a context option each had a fixed limit (30, 20 and
+  10 s) that pyppeteer does not have, so a loaded host failed where the original
+  waits. They now wait as long as the original does; the limits the API
+  declares stay.
+- **A browser that dies ends every wait at once.** A wait for an event - a
+  page's load state, its main frame, a navigation - had nothing to wake it when
+  the browser closed or crashed, so it ran to its timeout. It now raises at
+  once that the target closed.
+
 ## [0.3.5] - 2026-10-12
 
 The pin moves to invisible-core 41.36.0.

@@ -36,7 +36,7 @@ import os
 from ._humanize import (ENGINE_BINARY,
                         max_seconds_for as _cursor_max_seconds)
 from ._engine import resolve_executable
-from ._juggler.browser import MOTION_BUDGET_PREF, SESSION_SEED_PREF
+from invisible_core.juggler.instance import MOTION_BUDGET_PREF, SESSION_SEED_PREF
 from typing import Any, Dict, Optional
 
 from invisible_core import compose_session_prefs, context_geometry, make_virtual_display
@@ -427,7 +427,7 @@ class CommonLaunch:
 
     def _default_context_options(self) -> Dict[str, Any]:
         """The options every context of this session is created with, in the
-        engine's vocabulary (`invisible_puppeteer._juggler.browser`).
+        engine's vocabulary (`invisible_core.juggler.instance`).
 
         ⛔ In invisible_playwright this returns Playwright's snake_case kwargs
         (`timezone_id`), because there they travel through Playwright's client,

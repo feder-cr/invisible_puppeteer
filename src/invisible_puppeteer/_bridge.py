@@ -13,12 +13,10 @@ from __future__ import annotations
 
 import asyncio
 import math
-import time
 from typing import Any, List, Optional
 
 from . import errors
 from invisible_core.juggler.connection import ProtocolError, TargetClosedError
-from invisible_core.juggler.deadline import Deadline
 from invisible_core.juggler.injected import ContextDestroyed, EvaluationError
 from invisible_core.juggler.lifecycle import NavigationInterrupted
 
@@ -152,26 +150,6 @@ async def run(fn, *args, **kwargs):
         raise
     except Exception as e:
         raise translate(e) from None
-
-
-def across_navigation(fn, *, timeout: Optional[float] = 30.0):
-    """A page-level sequence, made again while a navigation the page started on
-    its own replaces the frame's worlds.
-
-    ⛔ IT READS THE TYPE, NOT THE SENTENCE. The core says a world has gone with
-    `ContextDestroyed`, from the one place that sends commands to a context;
-    until 0.3.5 this matched four spellings of the engine's text. A command
-    refused that way never ran, so `fn` can be made again; one that failed for
-    any other reason (an element of the old document, `Cannot find object`) is
-    the caller's answer at once, not a loop to the timeout."""
-    deadline = Deadline(timeout)
-    while True:
-        try:
-            return fn()
-        except ContextDestroyed:
-            if deadline.passed():
-                raise
-            time.sleep(0.05)
 
 
 def ms(options: dict, key: str = "timeout", default: float = 30000) -> float:
