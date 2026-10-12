@@ -14,6 +14,11 @@ The pin moves to invisible-core 41.36.0.
   type when it cannot (an element of the page that is gone).
 - **Frames follow the documents.** After a navigation that moved the page to
   another browser process, the old document's iframes stayed listed.
+- **A `goto` the browser abandons answers at once.** Sent while the previous
+  page's own redirect was in flight, `goto` could lose to it: Firefox loads the
+  redirect and drops ours without a word, and the call waited for its whole
+  timeout. It now raises a PageError at once, `Navigation to "X" is
+  interrupted by another navigation to "Y"`.
 
 ## [0.3.4] - 2026-10-11
 

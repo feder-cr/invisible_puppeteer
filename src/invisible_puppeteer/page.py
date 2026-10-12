@@ -18,7 +18,7 @@ from . import _bridge, errors
 from ._events import EventEmitter
 from invisible_core.juggler import domain_matches, host_of
 from invisible_core.juggler.deadline import Deadline
-from invisible_core.juggler.lifecycle import NavigationError
+from invisible_core.juggler.lifecycle import NavigationError, NavigationInterrupted
 from .element_handle import ElementHandle, JSHandle
 
 #: pyppeteer's `waitUntil` values, as the engine's four load states.
@@ -923,6 +923,8 @@ class Page(EventEmitter):
                 return engine.lifecycle.goto(url, frame_id=engine.main_frame_id,
                                              until=state, timeout=timeout,
                                              referer=options.get("referer"))
+            except NavigationInterrupted:
+                raise  # worded by `_bridge.translate`
             except NavigationError as e:
                 raise errors.PageError("%s at %s" % (e, url)) from None
             except TimeoutError:

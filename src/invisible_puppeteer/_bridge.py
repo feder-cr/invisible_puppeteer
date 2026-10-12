@@ -20,6 +20,7 @@ from . import errors
 from invisible_core.juggler.connection import ProtocolError, TargetClosedError
 from invisible_core.juggler.deadline import Deadline
 from invisible_core.juggler.injected import ContextDestroyed, EvaluationError
+from invisible_core.juggler.lifecycle import NavigationInterrupted
 
 #: Runs in the utility world. `root` is an element or null for the document.
 FIND_JS = """(root, by, value) => {
@@ -117,6 +118,11 @@ def translate(error: BaseException) -> BaseException:
             "navigation.")
     if isinstance(error, EvaluationError):
         return errors.ElementHandleError("Evaluation failed: %s" % text)
+    if isinstance(error, NavigationInterrupted):
+        # Another document took the page before ours committed: a failed
+        # navigation, as pyppeteer's goto raises for one, in the core's words,
+        # which already name both addresses.
+        return errors.PageError(text)
     if isinstance(error, TimeoutError):
         if "missing visible" in text or "no quad" in text:
             return errors.ElementHandleError(
