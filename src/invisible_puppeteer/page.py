@@ -229,18 +229,17 @@ class Frame:
         return await _bridge.run(lambda: self._engine.injected.content(self._id))
 
     async def setContent(self, html: str) -> None:
-        """Replaces the document with ``html``.
+        """Replaces the document with ``html``, and returns: pyppeteer's
+        `setContent` is the evaluation alone, and does not wait for the
+        document's `load` (until 0.3.7 this did).
 
         ⛔ Through `document.open/write/close` in the PAGE's world: Gecko wants
         `document.open()` under the document's own principal, and the utility
         world's extended principal is refused with "The operation is insecure"."""
-        def run():
-            self._engine.injected.evaluate_in_main(
-                self._id, "(() => { document.open(); document.write(%s);"
-                " document.close(); })()" % json.dumps(html), by_value=True)
-            self._engine.lifecycle.wait_for_state(self._id, "load",
-                                                  timeout=self._page._timeout_s)
-        await _bridge.run(run)
+        await _bridge.run(
+            self._engine.injected.evaluate_in_main,
+            self._id, "(() => { document.open(); document.write(%s);"
+            " document.close(); })()" % json.dumps(html), by_value=True)
 
     async def title(self) -> str:
         return await _bridge.run(lambda: self._engine.injected.title(self._id)) or ""
@@ -334,6 +333,16 @@ class Frame:
                               *args: Any, **kwargs: Any) -> JSHandle:
         options = _bridge.merge(options, kwargs)
         polling = options.get("polling", "raf")
+        # pyppeteer's `WaitTask` refuses these before anything is sent.
+        if isinstance(polling, str):
+            if polling not in ("raf", "mutation"):
+                raise ValueError("Unknown polling: %s" % polling)
+        elif isinstance(polling, (int, float)):
+            if polling <= 0:
+                raise ValueError(
+                    "Cannot poll with non-positive interval: %s" % polling)
+        else:
+            raise ValueError("Unknown polling option: %s" % polling)
         interval = (float(polling) / 1000.0 if isinstance(polling, (int, float))
                     else 0.05)
         deadline = Deadline(_bridge.ms(options))
@@ -353,12 +362,13 @@ class Frame:
             return None
 
         while True:
-            try:
-                handle = await _bridge.run(poll)
-                if handle is not None:
-                    return handle
-            except errors.ElementHandleError:
-                pass
+            # ⛔ A PREDICATE THAT THROWS ENDS THE WAIT WITH ITS ERROR, as
+            # pyppeteer's `WaitTask` rejects with it. Until 0.3.7 the error was
+            # swallowed and the wait polled on to its timeout, which then
+            # reported a timeout for a ReferenceError.
+            handle = await _bridge.run(poll)
+            if handle is not None:
+                return handle
             if deadline.passed():
                 raise errors.TimeoutError(
                     "Waiting for function failed: timeout %sms exceeds."
@@ -961,19 +971,22 @@ class Page(EventEmitter):
 
         def run():
             fid = engine.main_frame_id
-            frame = engine.lifecycle.frame(fid)
-            previous = frame.navigation if frame is not None else None
+            since = engine.lifecycle.mark(fid)
             result = engine.send(command, {"frameId": fid}
                                  if command != "Page.reload" else {}) or {}
             if command != "Page.reload" and not result.get("success"):
                 return None
+            # ⛔ pyppeteer's `NavigatorWatcher`: a same-document entry (a
+            # hash, a pushState) completes it at once with no response, and a
+            # timeout is an error. Until 0.3.7 the first waited the whole
+            # timeout and every timeout, the second case too, answered None.
             try:
                 return engine.lifecycle.wait_for_new_navigation(
-                    fid, previous, state, timeout=timeout)
+                    fid, since, state, timeout=timeout)
             except TimeoutError:
-                # A same-document entry (a hash, a pushState) changes the
-                # address without a new navigation: nothing to wait for.
-                return None
+                raise errors.TimeoutError(
+                    "Navigation Timeout Exceeded: %s ms exceeded."
+                    % int(timeout * 1000)) from None
         navigation = await _bridge.run(run)
         return self._navigation_response(navigation)
 
@@ -996,13 +1009,14 @@ class Page(EventEmitter):
                    else self._navigation_timeout_s)
         engine = self._engine
         fid = engine.main_frame_id
-        frame = engine.lifecycle.frame(fid)
-        previous = frame.navigation if frame is not None else None
+        # A same-document navigation completes the wait too, with no
+        # response: pyppeteer's `NavigatorWatcher`.
+        since = engine.lifecycle.mark(fid)
 
         def run():
             try:
                 return engine.lifecycle.wait_for_new_navigation(
-                    fid, previous, state, timeout=timeout)
+                    fid, since, state, timeout=timeout)
             except TimeoutError:
                 raise errors.TimeoutError(
                     "Navigation Timeout Exceeded: %s ms exceeded."

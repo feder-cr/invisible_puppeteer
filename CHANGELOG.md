@@ -2,6 +2,34 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-13
+
+The pin moves to invisible-core 41.39.0.
+
+### Changed
+- **`click`, `hover` and `tap` act once, as pyppeteer's**: the element is
+  scrolled into view if an IntersectionObserver does not see it whole, its
+  clickable point is the centre of its first quad larger than one pixel, and
+  the pointer acts there. A detached node raises "Node is detached from
+  document", a node with no box "Node is either not visible or not an
+  HTMLElement", at once; there is no check that the element is enabled,
+  stable or the topmost one, and no second attempt. Until 0.3.7 they waited
+  for all of that until the timeout.
+- `focus` is `element.focus()`, with no check.
+- `boundingBox` answers `None` when the engine refuses the question.
+- `waitForFunction` raises the predicate's error at once, as pyppeteer's
+  `WaitTask` rejects with it, and refuses an unknown `polling` with
+  pyppeteer's `ValueError`s.
+- `setContent` returns once the document is written and does not wait for
+  its `load`.
+
+### Fixed
+- **`goBack`, `goForward`, `reload` and `waitForNavigation` end at once on a
+  same-document navigation**, with no response, as pyppeteer's
+  `NavigatorWatcher`; the history methods waited out their timeout first.
+  And a timeout of theirs raises `TimeoutError` ("Navigation Timeout
+  Exceeded"), where it answered `None`.
+
 ## [0.3.7] - 2026-10-12
 
 The pin moves to invisible-core 41.38.0.

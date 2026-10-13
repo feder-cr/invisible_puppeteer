@@ -14,9 +14,42 @@ import base64
 import os
 from typing import Any, Dict, List, Optional
 
+from invisible_core.juggler.connection import ProtocolError
+
 from . import _bridge, errors
 
 _HANDLE = "<element handle>"
+
+#: pyppeteer's `_scrollIntoViewIfNeeded` (element_handle.py, 1.0.2), run in the
+#: utility world: a detached node and a node that is not an element are refused
+#: with pyppeteer's words, and an element an IntersectionObserver does not see
+#: wholly (ratio below 1) is scrolled to the centre. Answers the refusal, or
+#: false.
+_SCROLL_INTO_VIEW_IF_NEEDED = """async (el) => {
+  if (!el.isConnected) return 'Node is detached from document';
+  if (el.nodeType !== Node.ELEMENT_NODE) return 'Node is not of type HTMLElement';
+  const ratio = await new Promise(resolve => {
+    const observer = new IntersectionObserver(entries => {
+      resolve(entries[0].intersectionRatio);
+      observer.disconnect();
+    });
+    observer.observe(el);
+  });
+  if (ratio !== 1.0) {
+    el.scrollIntoView({block: 'center', inline: 'center', behavior: 'instant'});
+  }
+  return false;
+}"""
+
+
+def _quad_area(points) -> float:
+    """The area of a quad, by the shoelace formula, as pyppeteer's
+    `_computeQuadArea`."""
+    area = 0.0
+    for i, a in enumerate(points):
+        b = points[(i + 1) % len(points)]
+        area += (a["x"] * b["y"] - b["x"] * a["y"]) / 2
+    return abs(area)
 
 
 class JSHandle:
@@ -137,9 +170,49 @@ class ElementHandle(JSHandle):
         return self._frame._page._frame(inner)
 
     # ── acting ──────────────────────────────────────────────────────────────
+    # ⛔ ONE ATTEMPT, AS PYPPETEER'S: `hover`, `click` and `tap` scroll the
+    # element into view if needed, take its clickable point, and act there
+    # once. There is no check that the element is enabled, stable or the
+    # topmost one at the point, and no second attempt. Until 0.3.7 they went
+    # through the engine's Playwright loop, which waited for all of that until
+    # the timeout.
+    def _scroll_into_view_if_needed(self) -> None:
+        said = self._page.injected.call_raw(
+            self._context(), _SCROLL_INTO_VIEW_IF_NEEDED,
+            [{"objectId": self._oid}], by_value=True).get("value")
+        if said:
+            raise errors.ElementHandleError(said)
+
+    def _clickable_point(self):
+        """pyppeteer's `_clickablePoint`: the centre of the first content quad
+        larger than one pixel, in the main frame's coordinates."""
+        try:
+            r = self._page.send("Page.getContentQuads",
+                                {"frameId": self._frame._id, "objectId": self._oid})
+        except Exception:  # noqa: BLE001 - pyppeteer: no quads, same error
+            r = None
+        quads = []
+        for q in (r or {}).get("quads") or []:
+            points = [q["p1"], q["p2"], q["p3"], q["p4"]]
+            if _quad_area(points) > 1:
+                quads.append(points)
+        if not quads:
+            raise errors.ElementHandleError(
+                "Node is either not visible or not an HTMLElement")
+        points = quads[0]
+        return (sum(p["x"] for p in points) / 4, sum(p["y"] for p in points) / 4)
+
+    def _point_in_view(self):
+        self._scroll_into_view_if_needed()
+        return self._clickable_point()
+
     async def hover(self) -> None:
         await self._frame._page._slow()
-        await _bridge.run(self._act, "hover")
+
+        def run():
+            x, y = self._point_in_view()
+            self._page.actions.glide_to(x, y)
+        await _bridge.run(run)
 
     async def click(self, options: dict = None, **kwargs: Any) -> None:
         """Clicks the element with the pointer: it travels there along a path
@@ -149,30 +222,33 @@ class ElementHandle(JSHandle):
         (milliseconds between mousedown and mouseup)."""
         options = _bridge.merge(options, kwargs)
         await self._frame._page._slow()
-        await _bridge.run(self._act, "click",
-                          button=_bridge.button(options.get("button")),
-                          clicks=int(options.get("clickCount") or 1),
-                          delay_ms=options.get("delay"))
+
+        def run():
+            x, y = self._point_in_view()
+            self._page.actions.click_at(x, y,
+                                        button=_bridge.button(options.get("button")),
+                                        clicks=int(options.get("clickCount") or 1),
+                                        delay_ms=options.get("delay"))
+        await _bridge.run(run)
 
     async def uploadFile(self, *filePaths: str) -> dict:
         files = [os.path.abspath(p) for p in filePaths]
-        await _bridge.run(self._act, "set_input_files", files)
+        await _bridge.run(self._act, "set_input_files", files, once=True)
         return {}
 
     async def tap(self) -> None:
         def run():
-            self._page.injected.scroll_into_view(self._frame._id, self._oid)
-            point = self._page.actions._center_point(self._frame._id, self._oid)
-            if point is None:
-                raise errors.ElementHandleError(
-                    "Node is either not visible or not an HTMLElement")
+            x, y = self._point_in_view()
             self._page.send("Page.dispatchTapEvent",
-                            {"x": point[0], "y": point[1], "modifiers": 0})
+                            {"x": x, "y": y, "modifiers": 0})
         await self._frame._page._slow()
         await _bridge.run(run)
 
     async def focus(self) -> None:
-        await _bridge.run(self._act, "focus")
+        """`element.focus()`, as pyppeteer's: no check, and nothing at all for
+        a node that is no longer in the document."""
+        await _bridge.run(lambda: self._page.injected.call_raw(
+            self._context(), "(el) => { el.focus(); }", [{"objectId": self._oid}]))
 
     async def type(self, text: str, options: Dict = None, **kwargs: Any) -> None:
         """Focuses the element and types the text, with the session's rhythm
@@ -188,9 +264,15 @@ class ElementHandle(JSHandle):
 
     # ── geometry ────────────────────────────────────────────────────────────
     async def boundingBox(self) -> Optional[Dict[str, float]]:
-        """x, y, width, height in main-frame viewport pixels, or None."""
-        return await _bridge.run(self._page.injected.bounding_box,
-                                 self._frame._id, self._oid)
+        """x, y, width, height in main-frame viewport pixels, or None - also
+        when the engine refuses the question, as pyppeteer answers None for a
+        protocol error (`_getBoxModel`)."""
+        def box():
+            try:
+                return self._page.injected.bounding_box(self._frame._id, self._oid)
+            except ProtocolError:
+                return None
+        return await _bridge.run(box)
 
     async def boxModel(self) -> Optional[Dict]:
         """The element's quad, repeated for each box: this engine reports the
