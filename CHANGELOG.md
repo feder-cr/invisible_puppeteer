@@ -29,9 +29,11 @@ The pin moves to invisible-core 44.39.0, which seals the firefox-44 engine.
   "Non-incognito profile cannot be closed".
 
 ### Fixed
-- **`keyboard.type(text, delay=N)` types a character that has no key**
-  (an accented letter, an emoji) by inserting it, as pyppeteer does; it
-  raised.
+- **Text with a character that has no key** (an accented letter, an emoji)
+  is typed as pyppeteer types it: the keys that exist are pressed and the
+  character is inserted in its place. `keyboard.type(text, delay=N)`
+  raised, and without a delay the whole text was inserted with no
+  keystroke.
 - **On Linux, the line endings a page reads are Windows'**: a `Blob` or a
   `File` made with `endings: "native"` turns `\n` into `\r\n`, and the text
   of a selection across two blocks is joined by `\r\n`, as on Windows.
