@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import mimetypes
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
@@ -22,17 +23,42 @@ from invisible_core.juggler.injected import ContextDestroyed
 from invisible_core.juggler.lifecycle import NavigationError, NavigationInterrupted
 from .element_handle import ElementHandle, JSHandle
 
-#: pyppeteer's `waitUntil` values, as the engine's four load states.
+#: pyppeteer's `waitUntil` values (`pyppeteerToProtocolLifecycle`), as the
+#: engine's load states. `documentloaded` is pyppeteer's old name, accepted
+#: with a warning. `networkidle2` is "at most two requests for 500 ms" in
+#: pyppeteer and the engine's networkidle is zero, so it waits longer than
+#: pyppeteer does on a page that keeps a request open.
 _WAIT_UNTIL = {"load": "load", "domcontentloaded": "domcontentloaded",
-               "networkidle0": "networkidle", "networkidle2": "networkidle",
-               "commit": "commit"}
+               "documentloaded": "domcontentloaded",
+               "networkidle0": "networkidle", "networkidle2": "networkidle"}
 _ORDER = ["commit", "domcontentloaded", "load", "networkidle"]
 
 
-def _state(wait_until) -> str:
-    """One engine state for a pyppeteer `waitUntil`, which may be a list: the
-    latest of them, since waiting for it waits for the others too."""
-    names = wait_until if isinstance(wait_until, (list, tuple)) else [wait_until or "load"]
+def _state(options: dict) -> str:
+    """One engine state for a navigation's options, validated as pyppeteer's
+    `NavigatorWatcher._validate_options` does, before anything is sent: the
+    same errors in the same order, and the latest of the states asked for,
+    since waiting for it waits for the others too."""
+    if "networkIdleTimeout" in options:
+        raise ValueError("`networkIdleTimeout` option is no longer supported.")
+    if "networkIdleInflight" in options:
+        raise ValueError("`networkIdleInflight` option is no longer supported.")
+    if options.get("waitUntil") == "networkidle":
+        # pyppeteer's words, its spelling included.
+        raise ValueError("`networkidle` option is no logner supported. "
+                         "Use `networkidle2` instead.")
+    if options.get("waitUntil") == "documentloaded":
+        logging.getLogger(__name__).warning(
+            "`documentloaded` option is no longer supported. "
+            "Use `domcontentloaded` instead.")
+    wait_until = options.get("waitUntil", "load")
+    if isinstance(wait_until, list):
+        names = wait_until
+    elif isinstance(wait_until, str):
+        names = [wait_until]
+    else:
+        raise TypeError("`waitUntil` option should be str or list of str, "
+                        "but got type %s" % type(wait_until))
     states = []
     for name in names:
         if name not in _WAIT_UNTIL:
@@ -244,30 +270,101 @@ class Frame:
     async def title(self) -> str:
         return await _bridge.run(lambda: self._engine.injected.title(self._id)) or ""
 
+    # pyppeteer's page functions for the two tags (frame_manager.py), as they
+    # are: a tag by `url` resolves once it has loaded and rejects when it does
+    # not; a script by content throws an error its `onerror` saw at once.
+    _ADD_SCRIPT_URL = """async function addScriptUrl(url, type) {
+    const script = document.createElement('script');
+    script.src = url;
+    if (type)
+        script.type = type;
+    const promise = new Promise((res, rej) => {
+        script.onload = res;
+        script.onerror = rej;
+    });
+    document.head.appendChild(script);
+    await promise;
+    return script;
+}"""
+    _ADD_SCRIPT_CONTENT = """function addScriptContent(content, type = 'text/javascript') {
+    const script = document.createElement('script');
+    script.type = type;
+    script.text = content;
+    let error = null;
+    script.onerror = e => error = e;
+    document.head.appendChild(script);
+    if (error)
+        throw error;
+    return script;
+}"""
+    _ADD_STYLE_URL = """async function (url) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = url;
+    const promise = new Promise((res, rej) => {
+        link.onload = res;
+        link.onerror = rej;
+    });
+    document.head.appendChild(link);
+    await promise;
+    return link;
+}"""
+    _ADD_STYLE_CONTENT = """async function (content) {
+    const style = document.createElement('style');
+    style.type = 'text/css';
+    style.appendChild(document.createTextNode(content));
+    const promise = new Promise((res, rej) => {
+        style.onload = res;
+        style.onerror = rej;
+    });
+    document.head.appendChild(style);
+    await promise;
+    return style;
+}"""
+
     async def addScriptTag(self, options: Dict = None, **kwargs: str) -> ElementHandle:
+        """pyppeteer's `addScriptTag`: by `url` it waits for the script to
+        load and raises PageError when it does not; by `path` or `content`
+        the tag is `text/javascript` unless `type` says otherwise."""
         options = _bridge.merge(options, kwargs)
-        content = options.get("content")
-        if options.get("path"):
-            with open(options["path"], "r", encoding="utf-8") as f:
-                content = f.read() + "\n//# sourceURL=" + options["path"]
-        return await self.evaluateHandle(
-            "(url, content, type) => { const s = document.createElement('script');"
-            " if (type) s.type = type; if (url) s.src = url; else s.text = content;"
-            " document.head.appendChild(s); return s; }",
-            options.get("url"), content, options.get("type"))
+        if isinstance(options.get("url"), str):
+            url = options["url"]
+            args = [url] + ([options["type"]] if "type" in options else [])
+            try:
+                return await self.evaluateHandle(self._ADD_SCRIPT_URL, *args)
+            except errors.ElementHandleError as e:
+                raise errors.PageError("Loading script from %s failed" % url) from e
+        if isinstance(options.get("path"), str):
+            with open(options["path"], encoding="utf-8") as f:
+                contents = f.read()
+            contents += "//# sourceURL=%s" % options["path"].replace("\n", "")
+            args = [contents] + ([options["type"]] if "type" in options else [])
+            return await self.evaluateHandle(self._ADD_SCRIPT_CONTENT, *args)
+        if isinstance(options.get("content"), str):
+            args = [options["content"]] + ([options["type"]] if "type" in options else [])
+            return await self.evaluateHandle(self._ADD_SCRIPT_CONTENT, *args)
+        raise ValueError(
+            "Provide an object with a `url`, `path` or `content` property")
 
     async def addStyleTag(self, options: Dict = None, **kwargs: str) -> ElementHandle:
+        """pyppeteer's `addStyleTag`: the tag resolves once its stylesheet has
+        loaded, and by `url` a stylesheet that does not load is PageError."""
         options = _bridge.merge(options, kwargs)
-        content = options.get("content")
-        if options.get("path"):
-            with open(options["path"], "r", encoding="utf-8") as f:
-                content = f.read()
-        return await self.evaluateHandle(
-            "(url, content) => { let el; if (url) { el = document.createElement('link');"
-            " el.rel = 'stylesheet'; el.href = url; } else {"
-            " el = document.createElement('style'); el.textContent = content; }"
-            " document.head.appendChild(el); return el; }",
-            options.get("url"), content)
+        if isinstance(options.get("url"), str):
+            url = options["url"]
+            try:
+                return await self.evaluateHandle(self._ADD_STYLE_URL, url)
+            except errors.ElementHandleError as e:
+                raise errors.PageError("Loading style from %s failed" % url) from e
+        if isinstance(options.get("path"), str):
+            with open(options["path"], encoding="utf-8") as f:
+                contents = f.read()
+            contents += "/*# sourceURL=%s*/" % options["path"].replace("\n", "")
+            return await self.evaluateHandle(self._ADD_STYLE_CONTENT, contents)
+        if isinstance(options.get("content"), str):
+            return await self.evaluateHandle(self._ADD_STYLE_CONTENT, options["content"])
+        raise ValueError(
+            "Provide an object with a `url`, `path` or `content` property")
 
     # ── acting through a selector ───────────────────────────────────────────
     async def click(self, selector: str, options: dict = None, **kwargs: Any) -> None:
@@ -287,14 +384,38 @@ class Frame:
         await (await self._element(selector)).type(text, options, **kwargs)
 
     async def select(self, selector: str, *values: str) -> List[str]:
-        """Chooses the options with these values, with trusted input/change
-        events, and returns the values now selected."""
-        element = await self._element(selector)
-        tag = await element._read("(el) => (el.localName || '').toLowerCase()")
-        if tag != "select":
-            raise errors.ElementHandleError("Element is not a <select> element.")
-        await _bridge.run(element._act, "select_option",
-                          [{"value": str(v)} for v in values])
+        """Chooses the options with these values and returns the values now
+        selected, as pyppeteer's `select`: every value must be a string, an
+        unknown value is ignored, the first match only unless the select is
+        `multiple`, and nothing matching leaves nothing selected. No check
+        that the select is visible or enabled: a hidden native select behind
+        a styled widget is the ordinary case.
+
+        ⛔ ONE DEPARTURE: the engine selects through the dropdown's own path,
+        so `input` and `change` are trusted and fire when the selection
+        changed. pyppeteer dispatches both from the page, untrusted, every
+        time - the signal [B175] removed."""
+        for value in values:
+            if not isinstance(value, str):
+                raise TypeError("Values must be string. Found %s of type %s"
+                                % (value, type(value)))
+        element = await self.querySelector(selector)
+        if element is None:
+            raise errors.ElementHandleError(
+                'Error: failed to find element matching selector "%s"' % selector)
+        indices = await element._read(
+            "(el, values) => { if (el.nodeName.toLowerCase() !== 'select') return null;"
+            " const out = []; const options = Array.from(el.options);"
+            " for (let i = 0; i < options.length; i++) {"
+            "  if (values.includes(options[i].value)) {"
+            "   out.push(i); if (!el.multiple) break; } }"
+            " return out; }", list(values))
+        if indices is None:
+            raise errors.ElementHandleError(
+                "Evaluation failed: Error: Element is not a <select> element.")
+        await _bridge.run(lambda: self._engine.send(
+            "Page.selectOptions", {"frameId": self._id, "objectId": element._oid,
+                                   "indices": indices}))
         return await element._read(
             "(el) => Array.from(el.options).filter(o => o.selected).map(o => o.value)")
 
@@ -844,7 +965,8 @@ class Page(EventEmitter):
     @property
     def viewport(self) -> Optional[Dict]:
         if self._viewport is not None:
-            return dict(self._viewport)
+            # The very dict the caller passed, as pyppeteer's `page.viewport`.
+            return self._viewport
         vp = (self._context._engine.options or {}).get("viewport")
         return dict(vp) if vp else None
 
@@ -942,7 +1064,7 @@ class Page(EventEmitter):
         """Navigates and waits for ``waitUntil`` (default ``load``); answers
         with the main document's Response."""
         options = _bridge.merge(options, kwargs)
-        state = _state(options.get("waitUntil"))
+        state = _state(options)
         timeout = (_bridge.ms(options) if "timeout" in options
                    else self._navigation_timeout_s)
         engine = self._engine
@@ -964,7 +1086,7 @@ class Page(EventEmitter):
         return self._navigation_response(result.get("navigationId"))
 
     async def _history(self, command: str, options: dict) -> Optional[Response]:
-        state = _state(options.get("waitUntil"))
+        state = _state(options)
         timeout = (_bridge.ms(options) if "timeout" in options
                    else self._navigation_timeout_s)
         engine = self._engine
@@ -1004,7 +1126,7 @@ class Page(EventEmitter):
         call - the pattern is `asyncio.gather(page.waitForNavigation(),
         page.click(...))`, as in pyppeteer."""
         options = _bridge.merge(options, kwargs)
-        state = _state(options.get("waitUntil"))
+        state = _state(options)
         timeout = (_bridge.ms(options) if "timeout" in options
                    else self._navigation_timeout_s)
         engine = self._engine
@@ -1163,11 +1285,24 @@ class Page(EventEmitter):
         """Resizes the viewport.
 
         ⛔ The profile already declares a viewport that agrees with its screen;
-        a different one is the caller's choice, and it is applied as asked."""
-        self._viewport = dict(viewport)
+        a different one is the caller's choice, and it is applied as asked.
+
+        `width` and `height` are checked as pyppeteer's `get_positive_int`
+        checks them: an int, not negative. `isMobile`, `hasTouch` and
+        `deviceScaleFactor` are not emulated: the session's profile declares
+        them, and a page that read a touch screen or a pixel ratio its screen
+        does not have would read a device that does not exist."""
+        size = {}
+        for name in ("width", "height"):
+            value = viewport[name]
+            if not isinstance(value, int):
+                raise TypeError("%s must be integer: %s" % (name, type(value)))
+            if value < 0:
+                raise ValueError("%s must be positive integer: %s" % (name, value))
+            size[name] = value
+        self._viewport = viewport
         await _bridge.run(self._engine.send, "Page.setViewportSize",
-                          {"viewportSize": {"width": int(viewport["width"]),
-                                            "height": int(viewport["height"])}})
+                          {"viewportSize": size})
 
     async def emulate(self, options: dict = None, **kwargs: Any) -> None:
         options = _bridge.merge(options, kwargs)
