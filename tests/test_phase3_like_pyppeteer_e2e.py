@@ -228,3 +228,33 @@ def test_a_child_frame_lives_and_dies_as_pyppeteers(firefox_binary):
         with pytest.raises(errors.PageError, match=r"^waitForFunction failed: frame got detached\.$"):
             await asyncio.wait_for(waiting, 3)
     _with_page(firefox_binary, 4266, body)
+
+
+def test_cookies_are_the_ones_a_url_would_send(firefox_binary):
+    """pyppeteer asks Chrome for the cookies a URL would send
+    (`Network.getCookies` with the urls): its host, a path that is a prefix
+    ending at a '/', and no `secure` cookie to http. A cookie set with no url
+    takes the page's, and with it the page's directory as its path.
+    `deleteCookie` deletes it. On a blank page a cookie needs a url, and
+    `about:blank` itself is refused."""
+    from invisible_puppeteer import errors
+
+    async def body(page, url):
+        await page.goto(url + "a/b/page")
+        await page.setCookie({"name": "here", "value": "1"})
+        await page.setCookie({"name": "deep", "value": "1", "url": url + "a/b/c/x"})
+        await page.setCookie({"name": "sec", "value": "1", "secure": True})
+        names = {c["name"] for c in await page.cookies()}
+        assert "here" in names and "deep" not in names and "sec" not in names
+        assert {"here", "deep"} <= {c["name"] for c in await page.cookies(url + "a/b/c/x")}
+        assert "here" not in {c["name"] for c in await page.cookies(url + "z")}
+        await page.deleteCookie({"name": "here"})
+        assert "here" not in {c["name"] for c in await page.cookies()}
+        await page.goto("about:blank")
+        with pytest.raises(errors.PageError, match='^Blank page can not have cookie "x"$'):
+            await page.setCookie({"name": "x", "value": "1", "url": "about:blank"})
+        with pytest.raises(errors.NetworkError,
+                           match=r"^Protocol error \(Network\.deleteCookies\): At least "
+                                 r"one of the url and domain needs to be specified"):
+            await page.setCookie({"name": "x", "value": "1"})
+    _with_page(firefox_binary, 4267, body)
