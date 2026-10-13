@@ -163,3 +163,36 @@ def test_set_viewport_checks_its_size_as_pyppeteer(firefox_binary):
         await page.setViewport(viewport)
         assert page.viewport is viewport
     _with_page(firefox_binary, 4264, body)
+
+
+BEFOREUNLOAD = ("<p>bye</p><script>addEventListener('beforeunload', e => {"
+                " e.preventDefault(); e.returnValue = 'x'; })</script>")
+
+
+def test_close_with_run_before_unload_asks_the_page(firefox_binary):
+    """pyppeteer's `close(runBeforeUnload=True)` lets the page ask, and the
+    page closes when the `beforeunload` dialog is accepted; a page already
+    closed raises."""
+    from invisible_puppeteer import errors
+
+    async def body(page, url):
+        await page.setContent(BEFOREUNLOAD)
+        await page.click("p")  # sticky activation, which the prompt needs
+        dialogs = []
+        page.on("dialog", dialogs.append)
+        await page.close(runBeforeUnload=True)
+        deadline = time.monotonic() + 5
+        while not dialogs and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        assert dialogs and dialogs[0].type == "beforeunload"
+        assert not page.isClosed()
+        await dialogs[0].accept()
+        deadline = time.monotonic() + 5
+        while not page.isClosed() and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        assert page.isClosed()
+        with pytest.raises(errors.PageError,
+                           match=r"^Protocol Error: Connection Closed\. Most likely "
+                                 r"the page has been closed\.$"):
+            await page.close()
+    _with_page(firefox_binary, 4265, body)

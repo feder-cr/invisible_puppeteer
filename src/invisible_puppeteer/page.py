@@ -1463,7 +1463,17 @@ class Page(EventEmitter):
         await _bridge.run(self._engine.send, "Page.bringToFront", {})
 
     async def close(self, options: Dict = None, **kwargs: Any) -> None:
+        """pyppeteer's `close`. With `runBeforeUnload` the page runs its
+        `beforeunload` handlers and may ask (a `dialog` of type
+        `beforeunload`); it closes when that is accepted, and `close` is
+        emitted then. A page already closed raises, as pyppeteer's does once
+        its session is gone."""
+        options = _bridge.merge(options, kwargs)
         if self._closed:
+            raise errors.PageError("Protocol Error: Connection Closed. "
+                                   "Most likely the page has been closed.")
+        if options.get("runBeforeUnload"):
+            await _bridge.run(self._engine.send, "Page.close", {"runBeforeUnload": True})
             return
         self._closed = True
         await _bridge.run(self._engine.close)
