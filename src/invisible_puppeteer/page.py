@@ -514,12 +514,18 @@ class Frame:
     # ⛔ NOT `async def`, AS IN PYPPETEER: the wait starts when it is CALLED,
     # so `w = frame.waitForSelector(...)` sees an element that comes and goes
     # before `await w`. Until 0.4.0 nothing ran until the await.
+    #
+    # ⛔ AND ON THE BROWSER'S LOOP, as pyppeteer's `WaitTask` creates its task
+    # on its connection's loop: a call made with no loop running (the
+    # `loop.run_until_complete(page.waitForSelector(...))` of a synchronous
+    # caller) belongs to the loop the browser was launched on, not to a new
+    # one `asyncio` would make up.
     def waitForSelector(self, selector: str, options: dict = None, **kwargs: Any) -> Awaitable:
-        return asyncio.ensure_future(
+        return self._page._loop.create_task(
             self._wait_for_element("css", selector, _bridge.merge(options, kwargs)))
 
     def waitForXPath(self, xpath: str, options: dict = None, **kwargs: Any) -> Awaitable:
-        return asyncio.ensure_future(
+        return self._page._loop.create_task(
             self._wait_for_element("xpath", xpath, _bridge.merge(options, kwargs)))
 
     async def _wait_for_element(self, by: str, value: str, options: dict):

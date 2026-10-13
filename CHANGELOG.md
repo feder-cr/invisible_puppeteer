@@ -2,6 +2,52 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-13
+
+The pin moves to invisible-core 43.39.0, which seals the firefox-43 engine:
+a page's frames no longer drop out of `page.frames` after a few navigations
+in one tab, and on Linux AAC is answered as on Windows.
+
+### Changed
+- **`select` works as pyppeteer's**: a hidden or disabled `<select>` is
+  selected in, unknown values are ignored (`[]` when nothing matches), a value
+  that is not a string is `TypeError` ("Values must be string. Found 1 of type
+  <class 'int'>"), a selector that matches nothing is `ElementHandleError`
+  'Error: failed to find element matching selector "#nope"', and an element
+  that is not a `<select>` is pyppeteer's `ElementHandleError`. The options are
+  chosen by the engine, so `input` and `change` are trusted events.
+- **`waitForSelector` and `waitForXPath` start at the call**, as pyppeteer's
+  `WaitTask`: they return a task already running, poll in the page, answer the
+  hidden element (or a handle to `true` when it is absent) for `hidden=True`,
+  use pyppeteer's idea of visible (any of top, bottom, width or height), say
+  " to be hidden" when they time out, and end with "waitForFunction failed:
+  frame got detached." when their frame goes.
+- **`addScriptTag` and `addStyleTag` wait for a tag by `url` to load** and
+  raise "Loading script from X failed" / "Loading style from X failed"; with
+  none of `url`, `path` or `content` they raise pyppeteer's `ValueError`.
+- **`setViewport` refuses a size that is not a positive integer** with
+  pyppeteer's `TypeError` and `ValueError`, and `page.viewport` is the dict
+  that was passed.
+- **`waitUntil` is validated as pyppeteer validates it**: `commit` is
+  refused, `documentloaded` warns and means `domcontentloaded`, `networkidle`
+  and the removed options raise pyppeteer's words.
+- **`close(runBeforeUnload=True)` lets the page ask** (a `dialog` of type
+  `beforeunload`); the page closes when that is accepted. Closing a closed
+  page raises "Protocol Error: Connection Closed. Most likely the page has
+  been closed."
+- **The cookies are the ones a URL would send**, as Chrome's
+  `Network.getCookies` answers pyppeteer: host, a path prefix ending at a
+  '/', no `secure` cookie to http. `deleteCookie` deletes what matches the url
+  or the domain and the path; `setCookie` takes the page's url when none is
+  given and refuses `about:blank` and `data:` URLs in pyppeteer's words.
+
+### Fixed
+- **A child frame keeps its name and, once detached, its url**; a
+  same-document navigation is `framenavigated`.
+- A page that closes on its own (`window.close()`, or after its
+  `beforeunload` was accepted) no longer leaves its listeners on the
+  browser's connection for the life of the browser.
+
 ## [0.4.0] - 2026-10-13
 
 The pin moves to invisible-core 41.39.0.

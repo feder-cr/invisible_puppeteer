@@ -207,7 +207,10 @@ def test_select_and_upload_fire_what_a_user_fires(page, run, tmp_path):
 def test_waiting(page, run):
     el = run(page.waitForSelector("#appeared", {"visible": True, "timeout": 5000}))
     assert run(page.evaluate("(e) => e.textContent", el)) == "here"
-    assert run(page.waitForSelector("#hidden", {"hidden": True})) is None
+    # pyppeteer's WaitTask answers the hidden element itself (its predicate
+    # returns the node); until 0.4.0 this answered None.
+    hidden = run(page.waitForSelector("#hidden", {"hidden": True}))
+    assert run(page.evaluate("(e) => e.id", hidden)) == "hidden"
     handle = run(page.waitForFunction("() => window.clicks !== undefined || true"))
     assert handle is not None
     from invisible_puppeteer.errors import TimeoutError
