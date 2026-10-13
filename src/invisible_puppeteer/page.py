@@ -25,13 +25,15 @@ from .element_handle import ElementHandle, JSHandle
 
 #: pyppeteer's `waitUntil` values (`pyppeteerToProtocolLifecycle`), as the
 #: engine's load states. `documentloaded` is pyppeteer's old name, accepted
-#: with a warning. `networkidle2` is "at most two requests for 500 ms" in
-#: pyppeteer and the engine's networkidle is zero, so it waits longer than
-#: pyppeteer does on a page that keeps a request open.
+#: with a warning. `networkidle2` is the engine's own networkidle2, "at most
+#: two requests for 500 ms" as in pyppeteer; until 0.5.0 it was networkidle,
+#: none in flight, and a page that keeps two requests open never reached it.
 _WAIT_UNTIL = {"load": "load", "domcontentloaded": "domcontentloaded",
                "documentloaded": "domcontentloaded",
-               "networkidle0": "networkidle", "networkidle2": "networkidle"}
-_ORDER = ["commit", "domcontentloaded", "load", "networkidle"]
+               "networkidle0": "networkidle", "networkidle2": "networkidle2"}
+#: networkidle implies networkidle2 (none in flight is at most two), so it is
+#: the later of the two.
+_ORDER = ["commit", "domcontentloaded", "load", "networkidle2", "networkidle"]
 
 
 def _state(options: dict) -> str:
