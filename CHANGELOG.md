@@ -29,6 +29,8 @@ The pin moves to invisible-core 44.39.0, which seals the firefox-44 engine.
   "Non-incognito profile cannot be closed".
 
 ### Fixed
+- **A cookie that declared no `sameSite` has none in `cookies()`**, as
+  Chrome's cookie objects; every cookie carried `sameSite: "None"`.
 - **Text with a character that has no key** (an accented letter, an emoji)
   is typed as pyppeteer types it: the keys that exist are pressed and the
   character is inserted in its place. `keyboard.type(text, delay=N)`
