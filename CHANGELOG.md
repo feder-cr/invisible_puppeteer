@@ -21,13 +21,30 @@ The pin moves to invisible-core 44.39.0, which seals the firefox-44 engine.
   - the expected event is waited for on the child frames too, those that
     started loading: `domcontentloaded` waits for an iframe's document, and
     a lazy iframe out of view, which never starts, is not waited for.
+- **Four errors are pyppeteer's**: `page.type` on a selector that matches
+  nothing is `PageError` "Cannot find #x on this page"; a key that is not on
+  the layout is `PyppeteerError` "Unknown key: X" (it was the engine's
+  `ValueError`); handling a request with interception off says "Request
+  interception is not enabled."; closing the default context says
+  "Non-incognito profile cannot be closed".
 
 ### Fixed
+- **`keyboard.type(text, delay=N)` types a character that has no key**
+  (an accented letter, an emoji) by inserting it, as pyppeteer does; it
+  raised.
 - **On Linux, the line endings a page reads are Windows'**: a `Blob` or a
   `File` made with `endings: "native"` turns `\n` into `\r\n`, and the text
   of a selection across two blocks is joined by `\r\n`, as on Windows.
 - **`speechSynthesis.getVoices()` is Windows' list**: David, Mark, Zira and
   the two Desktop voices, in that order, and none of them is the default.
+
+### Not yet as the original
+- `keyboard.press(key, text=...)` and `down(key, text=...)` ignore `text`:
+  the engine turns a key event that carries another text into an input
+  method composition (the page sees the key "Process"), which no keyboard
+  sends, so the option waits for the engine.
+- `browser.disconnect()` closes the browser, where pyppeteer leaves it
+  running.
 
 ## [0.5.0] - 2026-10-13
 
