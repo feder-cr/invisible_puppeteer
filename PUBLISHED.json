@@ -1511,6 +1511,87 @@
         }
       },
       "wheel_filename": "invisible_puppeteer-0.3.7-py3-none-any.whl"
+    },
+    {
+      "published_at": "2026-10-13T03:26:58Z",
+      "requires_dist": [
+        "invisible-core==41.39.0",
+        "build>=1; extra == 'dev'",
+        "pytest-rerunfailures>=14; extra == 'dev'",
+        "pytest-timeout>=2; extra == 'dev'",
+        "pytest-xdist>=3; extra == 'dev'",
+        "pytest>=7; extra == 'dev'"
+      ],
+      "sdist": {
+        "digest": "622311f42b3b292db77713bd92baa732561c082e05fbd15793f633af73ca7774",
+        "files": {
+          "LICENSE": "2abb03e63a96918967f383cbc36e3faefe10a47ae20b2cab43212ef965e02f96",
+          "PKG-INFO": "ba36dbf650317f9c05e9e9276df064c225a07c4c781264574e906679dc4245ec",
+          "README.md": "8d40662718e32d370b92d7c51f43c05ac2b91a564ed0f22423473ee79314b0c0",
+          "THIRD_PARTY.md": "4b1b506ac2195412da17f52705ecaadb09a6fe133fa13031edb57f233351001d",
+          "pyproject.toml": "af8212a9b67a8e717a81034756a5ca5eb1654a25cc254740c1facf2224917326",
+          "src/invisible_puppeteer/__init__.py": "32119445cd34003d98a656c1ebaa5ebee0ab90b7793fada2006c4148707dc916",
+          "src/invisible_puppeteer/__main__.py": "c6cd277050ead2d11c98b7cbab91ada7d19e495c95e4c86de1f9aaf2b2051d38",
+          "src/invisible_puppeteer/_bridge.py": "331a8e42e69a017bbf874b5697c1120159b50a055321864e842b263d4693430a",
+          "src/invisible_puppeteer/_engine.py": "41adc2dd4ac46ed7b7bdf712cf5712ae16bea79d2f2d4de78f674842468614aa",
+          "src/invisible_puppeteer/_events.py": "d92f1c687eb47adc8b22ac851a6d18298d7e4d6dd4ccd656066a490a2a36779e",
+          "src/invisible_puppeteer/_humanize.py": "7967c9851e64825522e52d385151e2e937e704cc466d72114e65545e150abcf0",
+          "src/invisible_puppeteer/_pin.py": "a6cd18cc45c0fe482d595715e2c611fc02b52af64d722fd0aa4fa1259bb67739",
+          "src/invisible_puppeteer/_reaper.py": "4e87bd00b81805fa3e242ae8c1162c32fa78da4dbc515a9de0647209fab7533c",
+          "src/invisible_puppeteer/_session.py": "9ffe2cdb1dd8b4827a55b0ff327d31f4a9d2bb7e080a88c40d25fa0ab0d0b227",
+          "src/invisible_puppeteer/_version.py": "deae5817d39a7ca8511f5d447982feef3c8a7e27602480d28dfd49a8bd6cf829",
+          "src/invisible_puppeteer/browser.py": "08f56fd3b185e2db213bf00dd162f00f8cf041f22265a1227ead9d5ca95e330f",
+          "src/invisible_puppeteer/cli.py": "44f20736d810d6c4311de2e898b7cad3eaa2b8e255d05392e63287166c6c6a41",
+          "src/invisible_puppeteer/element_handle.py": "dc36c04615d7a715a139b353af2e661719263f7cb400a4bad9dfab85b69e9d3f",
+          "src/invisible_puppeteer/errors.py": "b9c63c556a559fd0064e99482c19143c530a475096df85bd5c70925e3af8b672",
+          "src/invisible_puppeteer/launcher.py": "db35ff64ca27279c238f03726653f16085bd6b2e89e64d86aaaa4b88af8b6de9",
+          "src/invisible_puppeteer/page.py": "cd4df5861e15c41e356cb30018fcb2b53d55af495c53bbdecf438a4ca7ad5f9a",
+          "src/invisible_puppeteer/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "tests/conftest.py": "0c8bba18407736336c72ee34e21d31103cfd986293ba4bac07a8fd2602f9c84b",
+          "tests/test_a_wait_goes_on_through_a_navigation.py": "97566ab1812307633aaeb477510d265de6fb5c8a9d3237aced8bab6af8ddd8d2",
+          "tests/test_actions_and_waits_like_pyppeteer_e2e.py": "9c52221564d67965285dbef889d41a4a202c388b007352c0ccc0f54c8143a5b3",
+          "tests/test_adapter.py": "94aa9980dd870794dc4fc6fb01ee9b68c3cc60c872d810b55bc866b81b46f4f5",
+          "tests/test_browser_output_is_drained.py": "fa25c18741205ce671b4afb2a6da864222791464001cd464d44d401202e4f169",
+          "tests/test_context_locale_is_a_list.py": "75ba1ca2328d179f187f9bc9f4c807352dfb5b55f7140cb1774dd2d4d4ba2b5b",
+          "tests/test_engine_adaptations.py": "00d25a9f6dbb896399589ef3ee90a4f8f7918ae22b587617a789379884379cd7",
+          "tests/test_goto_script_redirect_e2e.py": "d4431b19a7cde40841612068c9d245e99d214dc63e944caca0a070b23087a70e",
+          "tests/test_juggler_lives_in_the_core.py": "461b54ce3a934eb6bc0c7616d1662c66e98fc80c897dbf7ce8df7a8d4795f343",
+          "tests/test_protocol_names_are_declared.py": "121acf0342ff67b05e6e556b2c9e3203c5e95b1798b267cd79aea59c694eef28",
+          "tests/test_puppeteer_e2e.py": "f2138b97108db13b99e6fe550b45194b4ba8f0623ec5735279fbd77fc0544f55",
+          "tests/test_reaper.py": "5063ab089f1936763e7288d94339c23d622e9e245ea5cef1f1153d8c5f05393b",
+          "tests/test_the_callers_code_runs_once_e2e.py": "73ccbebb9fde9b7ec94d03b95edc31d874b3a80ab4989c59c8441b01e2535646"
+        }
+      },
+      "sdist_filename": "invisible_puppeteer-0.4.0.tar.gz",
+      "seal_tag": "",
+      "version": "0.4.0",
+      "wheel": {
+        "digest": "60324dcaee79d6c57e050ad672e257e41c1b9d28399c1e4c4298a267f760287a",
+        "files": {
+          "<dist-info>/METADATA": "ba36dbf650317f9c05e9e9276df064c225a07c4c781264574e906679dc4245ec",
+          "<dist-info>/WHEEL": "5b77e4a649bbfb07fdbc123967eeecd1e5a478cfaca6eefc23c35e6fdf037848",
+          "<dist-info>/entry_points.txt": "d3bc84e5665855bf9d27099b7df4782b3097b474bb7ef029dee76157274baf59",
+          "<dist-info>/licenses/LICENSE": "2abb03e63a96918967f383cbc36e3faefe10a47ae20b2cab43212ef965e02f96",
+          "invisible_puppeteer/__init__.py": "32119445cd34003d98a656c1ebaa5ebee0ab90b7793fada2006c4148707dc916",
+          "invisible_puppeteer/__main__.py": "c6cd277050ead2d11c98b7cbab91ada7d19e495c95e4c86de1f9aaf2b2051d38",
+          "invisible_puppeteer/_bridge.py": "331a8e42e69a017bbf874b5697c1120159b50a055321864e842b263d4693430a",
+          "invisible_puppeteer/_engine.py": "41adc2dd4ac46ed7b7bdf712cf5712ae16bea79d2f2d4de78f674842468614aa",
+          "invisible_puppeteer/_events.py": "d92f1c687eb47adc8b22ac851a6d18298d7e4d6dd4ccd656066a490a2a36779e",
+          "invisible_puppeteer/_humanize.py": "7967c9851e64825522e52d385151e2e937e704cc466d72114e65545e150abcf0",
+          "invisible_puppeteer/_pin.py": "a6cd18cc45c0fe482d595715e2c611fc02b52af64d722fd0aa4fa1259bb67739",
+          "invisible_puppeteer/_reaper.py": "4e87bd00b81805fa3e242ae8c1162c32fa78da4dbc515a9de0647209fab7533c",
+          "invisible_puppeteer/_session.py": "9ffe2cdb1dd8b4827a55b0ff327d31f4a9d2bb7e080a88c40d25fa0ab0d0b227",
+          "invisible_puppeteer/_version.py": "deae5817d39a7ca8511f5d447982feef3c8a7e27602480d28dfd49a8bd6cf829",
+          "invisible_puppeteer/browser.py": "08f56fd3b185e2db213bf00dd162f00f8cf041f22265a1227ead9d5ca95e330f",
+          "invisible_puppeteer/cli.py": "44f20736d810d6c4311de2e898b7cad3eaa2b8e255d05392e63287166c6c6a41",
+          "invisible_puppeteer/element_handle.py": "dc36c04615d7a715a139b353af2e661719263f7cb400a4bad9dfab85b69e9d3f",
+          "invisible_puppeteer/errors.py": "b9c63c556a559fd0064e99482c19143c530a475096df85bd5c70925e3af8b672",
+          "invisible_puppeteer/launcher.py": "db35ff64ca27279c238f03726653f16085bd6b2e89e64d86aaaa4b88af8b6de9",
+          "invisible_puppeteer/page.py": "cd4df5861e15c41e356cb30018fcb2b53d55af495c53bbdecf438a4ca7ad5f9a",
+          "invisible_puppeteer/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "wheel_filename": "invisible_puppeteer-0.4.0-py3-none-any.whl"
     }
   ],
   "schema": 1
