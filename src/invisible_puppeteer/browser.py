@@ -40,7 +40,8 @@ class BrowserContext(EventEmitter):
 
     async def close(self) -> None:
         if not self._incognito:
-            raise errors.BrowserError("Non-incognito profiles cannot be closed!")
+            # pyppeteer's words (`browser.py`); until 0.6.0 puppeteer's.
+            raise errors.BrowserError("Non-incognito profile cannot be closed")
         for page in list(self._browser._pages.values()):
             if page._context is self:
                 page._closed = True

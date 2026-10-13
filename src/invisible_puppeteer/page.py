@@ -20,6 +20,7 @@ from . import _bridge, errors
 from ._events import EventEmitter
 from invisible_core.juggler.deadline import Deadline
 from invisible_core.juggler.injected import ContextDestroyed
+from invisible_core.juggler.keyboard import UnknownKey
 from invisible_core.juggler.lifecycle import NavigationError
 from .element_handle import ElementHandle, JSHandle
 
@@ -422,7 +423,12 @@ class Frame:
         await (await self._element(selector)).tap()
 
     async def type(self, selector: str, text: str, options: dict = None, **kwargs: Any) -> None:
-        await (await self._element(selector)).type(text, options, **kwargs)
+        # pyppeteer's `Frame.type` has its own sentence; click, hover and tap
+        # say "No node found for selector" (`_element`).
+        element = await self.querySelector(selector)
+        if element is None:
+            raise errors.PageError("Cannot find %s on this page" % selector)
+        await element.type(text, options, **kwargs)
 
     async def select(self, selector: str, *values: str) -> List[str]:
         """Chooses the options with these values and returns the values now
@@ -653,29 +659,40 @@ class Keyboard:
     def _kb(self):
         return self._page._engine.actions.keyboard
 
+    @staticmethod
+    def _on_key(call, key: str, **kwargs: Any) -> None:
+        """A keyboard call naming `key`, with pyppeteer's error for a key
+        that is not on the layout: PyppeteerError "Unknown key: X", the base
+        class (`input.py`). Until 0.6.0 the core's ValueError came through."""
+        try:
+            call(key, **kwargs)
+        except UnknownKey:
+            raise errors.PyppeteerError("Unknown key: %s" % key) from None
+
     async def down(self, key: str, options: dict = None, **kwargs: Any) -> None:
-        await _bridge.run(self._kb.down, key)
+        await _bridge.run(self._on_key, self._kb.down, key)
 
     async def up(self, key: str) -> None:
-        await _bridge.run(self._kb.up, key)
+        await _bridge.run(self._on_key, self._kb.up, key)
 
     async def sendCharacter(self, char: str) -> None:
         await _bridge.run(self._kb.insert_text, char)
 
     async def type(self, text: str, options: Dict = None, **kwargs: Any) -> None:
         """Types text. Without ``delay`` the gaps between keys are the
-        session's typing rhythm; with it, that many milliseconds each."""
+        session's typing rhythm; with it, that many milliseconds each. A
+        character the layout has no key for is inserted, never refused, as
+        pyppeteer's `sendCharacter` does for it: the core's `_type` is the
+        one place that decides how. Until 0.6.0 the `delay` path refused it."""
         options = _bridge.merge(options, kwargs)
         delay = options.get("delay")
-        actions = self._page._engine.actions
-        if delay:
-            await _bridge.run(self._kb.type, text, delay_ms=float(delay))
-        else:
-            await _bridge.run(actions._type, text)
+        await _bridge.run(self._page._engine.actions._type, text,
+                          float(delay) if delay else None)
 
     async def press(self, key: str, options: Dict = None, **kwargs: Any) -> None:
         options = _bridge.merge(options, kwargs)
-        await _bridge.run(self._kb.press, key, dwell_ms=options.get("delay"))
+        await _bridge.run(self._on_key, self._kb.press, key,
+                          dwell_ms=options.get("delay"))
 
 
 class Mouse:
@@ -790,6 +807,9 @@ class ConsoleMessage:
         return self._args
 
 
+_NOT_INTERCEPTING = "Request interception is not enabled."
+
+
 class Request:
     def __init__(self, page: "Page", params: dict) -> None:
         self._page = page
@@ -851,14 +871,16 @@ class Request:
     def failure(self) -> Optional[Dict]:
         return {"errorText": self._failure} if self._failure else None
 
+    # pyppeteer's sentence for all three (`network_manager.py`); until 0.6.0
+    # it ended in "!", puppeteer's.
     async def continue_(self, overrides: Dict = None) -> None:
-        raise errors.NetworkError("Request interception is not enabled!")
+        raise errors.NetworkError(_NOT_INTERCEPTING)
 
     async def respond(self, response: Dict) -> None:
-        raise errors.NetworkError("Request interception is not enabled!")
+        raise errors.NetworkError(_NOT_INTERCEPTING)
 
     async def abort(self, errorCode: str = "failed") -> None:
-        raise errors.NetworkError("Request interception is not enabled!")
+        raise errors.NetworkError(_NOT_INTERCEPTING)
 
 
 class Response:
