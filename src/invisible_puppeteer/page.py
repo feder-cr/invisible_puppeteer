@@ -1349,6 +1349,11 @@ class Page(EventEmitter):
             if any(_sent_to(c, url) for url in urls):
                 item = dict(c)
                 item.setdefault("size", len(c.get("name", "")) + len(c.get("value", "")))
+                # The engine says "None" for a cookie that declared nothing;
+                # Chrome's object has no `sameSite` then (measured on
+                # pyppeteer's Chromium). Until 0.6.0 every cookie carried it.
+                if item.get("sameSite") == "None":
+                    del item["sameSite"]
                 out.append(item)
         return out
 
