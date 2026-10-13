@@ -84,13 +84,6 @@ def test_engine_failures_become_pyppeteers_exceptions():
     gone = _bridge.translate(ContextDestroyed("Execution context was destroyed"))
     assert isinstance(gone, errors.NetworkError)
     assert "most likely because of a navigation" in str(gone)
-    # Another document committed in ours' place: a failed navigation, in the
-    # core's words, which name both addresses (invisible-core 41.36.0).
-    from invisible_core.juggler.lifecycle import NavigationInterrupted
-    said = ('Navigation to "http://a/next" is interrupted by another '
-            'navigation to "http://a/landed"')
-    lost = _bridge.translate(NavigationInterrupted(said))
-    assert isinstance(lost, errors.PageError) and str(lost) == said
     assert issubclass(errors.TimeoutError, asyncio.TimeoutError)
 
 
@@ -152,22 +145,17 @@ def test_frames_are_the_lifecycles_and_their_events_its_announcements():
                        ("frameattached", "new-child")], emitted
 
 
-@pytest.mark.parametrize("raised, said", [
-    ("interrupted", 'Navigation to "http://a/next" is interrupted by another '
-                    'navigation to "http://a/landed"'),
-    ("aborted", "NS_ERROR_UNKNOWN_HOST at http://a/next"),
-])
-def test_goto_words_an_interruption_once_and_an_abort_with_its_url(raised, said):
+def test_goto_words_an_abort_with_its_url():
     """An abort is the engine's error text, and goto adds the address as
-    pyppeteer does ("net::ERR_... at <url>"). An interruption already names
-    both addresses, and adding the url again would say it twice."""
-    from invisible_core.juggler.lifecycle import NavigationError, NavigationInterrupted
+    pyppeteer does ("net::ERR_... at <url>"). An interruption is not an
+    error here at all: the wait follows the document that took the page
+    (`tests/test_navigation_like_pyppeteer_e2e.py`)."""
+    from invisible_core.juggler.lifecycle import NavigationError
 
-    error = (NavigationInterrupted(said) if raised == "interrupted"
-             else NavigationError("NS_ERROR_UNKNOWN_HOST"))
+    said = "NS_ERROR_UNKNOWN_HOST at http://a/next"
 
     def goto(url, **kwargs):
-        raise error
+        raise NavigationError("NS_ERROR_UNKNOWN_HOST")
 
     page = Page.__new__(Page)
     page._engine = type("E", (), {"lifecycle": type("L", (), {

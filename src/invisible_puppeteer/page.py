@@ -20,8 +20,16 @@ from . import _bridge, errors
 from ._events import EventEmitter
 from invisible_core.juggler.deadline import Deadline
 from invisible_core.juggler.injected import ContextDestroyed
-from invisible_core.juggler.lifecycle import NavigationError, NavigationInterrupted
+from invisible_core.juggler.lifecycle import NavigationError
 from .element_handle import ElementHandle, JSHandle
+
+#: How every navigation wait here is decided: pyppeteer's `NavigatorWatcher`
+#: completes when the frame carries a document other than the one it had when
+#: the wait began and that document and every child frame have the expected
+#: events (`_checkLifecycleComplete`, `_checkLifecycle`). It never says
+#: interrupted. The core counts only the children that have started loading,
+#: puppeteer's own later rule: a lazy iframe out of view never starts.
+_FOLLOW = {"replaced": "follow", "children": True}
 
 #: pyppeteer's `waitUntil` values (`pyppeteerToProtocolLifecycle`), as the
 #: engine's load states. `documentloaded` is pyppeteer's old name, accepted
@@ -1197,12 +1205,16 @@ class Page(EventEmitter):
         engine = self._engine
 
         def run():
+            # ⛔ `_FOLLOW`, and the answer is the response of the document the
+            # wait ended on (`requests.get(mainFrame._navigationURL)`). Until
+            # 0.6.0 a replacement before commit was PageError "interrupted",
+            # the response was the first document's after the page replaced
+            # itself, and the children were not waited for.
             try:
                 return engine.lifecycle.goto(url, frame_id=engine.main_frame_id,
                                              until=state, timeout=timeout,
-                                             referer=options.get("referer"))
-            except NavigationInterrupted:
-                raise  # worded by `_bridge.translate`
+                                             referer=options.get("referer"),
+                                             **_FOLLOW)
             except NavigationError as e:
                 raise errors.PageError("%s at %s" % (e, url)) from None
             except TimeoutError:
@@ -1210,7 +1222,7 @@ class Page(EventEmitter):
                     "Navigation Timeout Exceeded: %s ms exceeded."
                     % int(timeout * 1000)) from None
         result = await _bridge.run(run)
-        return self._navigation_response(result.get("navigationId"))
+        return self._navigation_response(result.get("landed"))
 
     async def _history(self, command: str, options: dict) -> Optional[Response]:
         state = _state(options)
@@ -1231,7 +1243,7 @@ class Page(EventEmitter):
             # timeout and every timeout, the second case too, answered None.
             try:
                 return engine.lifecycle.wait_for_new_navigation(
-                    fid, since, state, timeout=timeout)
+                    fid, since, state, timeout=timeout, **_FOLLOW)
             except TimeoutError:
                 raise errors.TimeoutError(
                     "Navigation Timeout Exceeded: %s ms exceeded."
@@ -1265,7 +1277,7 @@ class Page(EventEmitter):
         def run():
             try:
                 return engine.lifecycle.wait_for_new_navigation(
-                    fid, since, state, timeout=timeout)
+                    fid, since, state, timeout=timeout, **_FOLLOW)
             except TimeoutError:
                 raise errors.TimeoutError(
                     "Navigation Timeout Exceeded: %s ms exceeded."
