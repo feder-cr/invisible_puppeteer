@@ -24,12 +24,31 @@ def test_function_or_expression_is_decided_like_pyppeteer():
 
 
 def test_wait_until_maps_to_the_latest_engine_state():
-    assert _state(None) == "load"
-    assert _state("domcontentloaded") == "domcontentloaded"
-    assert _state("networkidle0") == "networkidle"
-    assert _state(["domcontentloaded", "load"]) == "load"
-    with pytest.raises(ValueError):
-        _state("whenever")
+    assert _state({}) == "load"
+    assert _state({"waitUntil": "domcontentloaded"}) == "domcontentloaded"
+    assert _state({"waitUntil": "networkidle0"}) == "networkidle"
+    assert _state({"waitUntil": ["domcontentloaded", "load"]}) == "load"
+    with pytest.raises(ValueError, match="^Unknown value for options.waitUntil: whenever$"):
+        _state({"waitUntil": "whenever"})
+
+
+def test_wait_until_is_validated_as_pyppeteers_navigator_watcher(caplog):
+    """pyppeteer 1.0.2 `NavigatorWatcher._validate_options`: the same errors,
+    before anything is sent."""
+    with pytest.raises(ValueError, match="^`networkIdleTimeout` option is no longer supported.$"):
+        _state({"networkIdleTimeout": 500})
+    with pytest.raises(ValueError, match="^`networkIdleInflight` option is no longer supported.$"):
+        _state({"networkIdleInflight": 2})
+    with pytest.raises(ValueError, match="no logner supported. Use `networkidle2` instead.$"):
+        _state({"waitUntil": "networkidle"})
+    with pytest.raises(TypeError, match="^`waitUntil` option should be str or list of str"):
+        _state({"waitUntil": ("load",)})
+    with pytest.raises(TypeError):
+        _state({"waitUntil": None})
+    with pytest.raises(ValueError, match="^Unknown value for options.waitUntil: commit$"):
+        _state({"waitUntil": "commit"})
+    assert _state({"waitUntil": "documentloaded"}) == "domcontentloaded"
+    assert "`documentloaded` option is no longer supported" in caplog.text
 
 
 def test_numbers_json_cannot_carry_travel_as_unserializable_values():
