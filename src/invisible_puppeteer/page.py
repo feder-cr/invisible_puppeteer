@@ -419,36 +419,117 @@ class Frame:
         return await element._read(
             "(el) => Array.from(el.options).filter(o => o.selected).map(o => o.value)")
 
-    # ── waiting ─────────────────────────────────────────────────────────────
-    async def waitForSelector(self, selector: str, options: dict = None, **kwargs: Any):
-        return await self._wait_for_element("css", selector, _bridge.merge(options, kwargs))
+    # ── waiting ─────────────────────────────────────────────────────────────────────
+    #: pyppeteer's selector predicate inside its polling page function
+    #: (frame_manager.py, `_waitForSelectorOrXPath` and
+    #: `waitForPredicatePageFunction`), as one function the UTILITY world
+    #: runs: polling on animation frames when visibility is asked, on DOM
+    #: mutations otherwise, and resolving undefined when its own timer runs
+    #: out. In the utility world the page sees no MutationObserver and no
+    #: requestAnimationFrame of its own being called.
+    _WAIT_FOR_SELECTOR = """async (selectorOrXPath, isXPath, waitForVisible, waitForHidden, polling, timeout) => {
+  const predicate = () => {
+    const node = isXPath
+        ? document.evaluate(selectorOrXPath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue
+        : document.querySelector(selectorOrXPath);
+    if (!node)
+      return waitForHidden;
+    if (!waitForVisible && !waitForHidden)
+      return node;
+    const element = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    const isVisible = style && style.visibility !== 'hidden' &&
+        !!(rect.top || rect.bottom || rect.width || rect.height);
+    const success = (waitForVisible === isVisible || waitForHidden === !isVisible);
+    return success ? node : null;
+  };
+  let timedOut = false;
+  if (timeout)
+    setTimeout(() => timedOut = true, timeout);
+  const first = predicate();
+  if (first)
+    return first;
+  return await new Promise(fulfill => {
+    if (polling === 'raf') {
+      const onRaf = () => {
+        if (timedOut)
+          return fulfill();
+        const success = predicate();
+        if (success)
+          return fulfill(success);
+        requestAnimationFrame(onRaf);
+      };
+      requestAnimationFrame(onRaf);
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      if (timedOut) {
+        observer.disconnect();
+        return fulfill();
+      }
+      const success = predicate();
+      if (success) {
+        observer.disconnect();
+        fulfill(success);
+      }
+    });
+    observer.observe(document, {childList: true, subtree: true, attributes: true});
+    if (timeout)
+      setTimeout(() => { observer.disconnect(); fulfill(); }, timeout);
+  });
+}"""
 
-    async def waitForXPath(self, xpath: str, options: dict = None, **kwargs: Any):
-        return await self._wait_for_element("xpath", xpath, _bridge.merge(options, kwargs))
+    # ⛔ NOT `async def`, AS IN PYPPETEER: the wait starts when it is CALLED,
+    # so `w = frame.waitForSelector(...)` sees an element that comes and goes
+    # before `await w`. Until 0.4.0 nothing ran until the await.
+    def waitForSelector(self, selector: str, options: dict = None, **kwargs: Any) -> Awaitable:
+        return asyncio.ensure_future(
+            self._wait_for_element("css", selector, _bridge.merge(options, kwargs)))
+
+    def waitForXPath(self, xpath: str, options: dict = None, **kwargs: Any) -> Awaitable:
+        return asyncio.ensure_future(
+            self._wait_for_element("xpath", xpath, _bridge.merge(options, kwargs)))
 
     async def _wait_for_element(self, by: str, value: str, options: dict):
+        """pyppeteer's `WaitTask` for a selector or an XPath: the element, or
+        with `hidden` the element still there but hidden, or a handle to
+        `true` when it is gone; again in the new document when the frame
+        navigates; PageError when the frame is detached."""
+        timeout = options.get("timeout", 30000)
         visible = bool(options.get("visible"))
         hidden = bool(options.get("hidden"))
-        deadline = Deadline(_bridge.ms(options))
+        polling = "raf" if visible or hidden else "mutation"
+        title = '%s "%s"%s' % ("XPath" if by == "xpath" else "selector", value,
+                               " to be hidden" if hidden else "")
+        deadline = Deadline(timeout / 1000.0 if timeout else None)
         engine = self._engine
-        while True:
-            found = await self._query(None, by, value)
-            element = found[0] if found else None
-            shown = False
-            if element is not None and (visible or hidden):
-                shown = await _bridge.run(engine.injected.element_state,
-                                          self._id, element._oid, "visible")
-            if hidden:
-                if element is None or not shown:
+
+        def run():
+            while True:
+                if engine.lifecycle.frame(self._id) is None:
+                    raise errors.PageError("waitForFunction failed: frame got detached.")
+                left = deadline.left()
+                if left is not None and left <= 0:
                     return None
-            elif element is not None and (not visible or shown):
-                return element
-            if deadline.passed():
-                what = "selector" if by == "css" else "XPath"
-                raise errors.TimeoutError(
-                    'Waiting for %s "%s" failed: timeout %sms exceeds.'
-                    % (what, value, int(options.get("timeout", 30000))))
-            await asyncio.sleep(0.1)
+                try:
+                    ctx = engine.injected.context_id(self._id)
+                    return engine.injected.call_raw(
+                        ctx, self._WAIT_FOR_SELECTOR,
+                        [{"value": value}, {"value": by == "xpath"},
+                         {"value": visible}, {"value": hidden},
+                         {"value": polling},
+                         {"value": 0 if left is None else max(1, int(left * 1000))}],
+                        by_value=False, timeout=None)
+                except ContextDestroyed:
+                    continue  # the document went: ask the next one
+        remote = await _bridge.run(run)
+        if not remote or remote.get("type") == "undefined":
+            raise errors.TimeoutError(
+                "Waiting for %s failed: timeout %sms exceeds." % (title, timeout))
+        if remote.get("subtype") == "node" and remote.get("objectId"):
+            return ElementHandle(self, remote["objectId"])
+        return JSHandle(self, remote.get("objectId") or "", remote)
 
     async def waitForFunction(self, pageFunction: str, options: dict = None,
                               *args: Any, **kwargs: Any) -> JSHandle:
