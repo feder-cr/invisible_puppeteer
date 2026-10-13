@@ -15,9 +15,9 @@ The pin moves to invisible-core 44.39.0, which seals the firefox-44 engine.
   - a document that commits in place of the one asked for is waited on in
     its place, and nothing raises; it was `PageError` "is interrupted by
     another navigation";
-  - the answer is the response of the document the wait ended on, so after a
-    page replaced itself (`location.replace`) it is the final page's; it was
-    the first page's;
+  - the answer is the response of the document the wait ended on
+    (pyppeteer's `mainFrame._navigationURL`); it was always the first
+    document's;
   - the expected event is waited for on the child frames too, those that
     started loading: `domcontentloaded` waits for an iframe's document, and
     a lazy iframe out of view, which never starts, is not waited for.
@@ -47,6 +47,14 @@ The pin moves to invisible-core 44.39.0, which seals the firefox-44 engine.
   sends, so the option waits for the engine.
 - `browser.disconnect()` closes the browser, where pyppeteer leaves it
   running.
+- Where Firefox and pyppeteer's Chromium fire different events, the same
+  rule ends in a different place. A page that replaces itself in its head
+  (`location.replace`): Chromium fires the first page's `load` before the
+  second commits, so pyppeteer answers the first page; Firefox fires none,
+  so `goto` answers the second. A script navigation of the page being left
+  while a `goto` is on its way: Chromium drops it, Firefox lets it replace
+  the `goto`, which then ends on it.
+- A `goto` to a `data:` URL emits no `request` event; pyppeteer's does.
 
 ## [0.5.0] - 2026-10-13
 

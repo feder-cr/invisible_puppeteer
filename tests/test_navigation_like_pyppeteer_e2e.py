@@ -18,6 +18,14 @@ lifecycle events (`navigator_watcher.py` `_checkLifecycleComplete`,
 Until 0.6.0 the first raised PageError "is interrupted by another
 navigation", the second answered the first document's response, and the third
 returned on the main frame alone.
+
+These are pyppeteer's rules on Firefox's events. Asked of pyppeteer 1.0.2 and
+its Chromium r588429 on 2026-10-13 (`C:/tmp/b230/oracle_pp_nav.py`), the same
+pages end elsewhere because Chromium's events differ: it drops the leaving
+page's script navigation instead of letting it replace the `goto`, and it
+fires the first page's `load` before a `location.replace` in the head commits,
+so pyppeteer answers the first page there. The third case it answers as here:
+1.52 s with the slow child, 1.55 s here.
 """
 from __future__ import annotations
 
