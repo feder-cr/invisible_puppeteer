@@ -95,6 +95,16 @@ class Frame:
         self._page = page
         self._id = frame_id
         self._execution_context = ExecutionContext(self)
+        #: The lifecycle's frame, held: it outlives the frame's detachment,
+        #: so a detached frame still says its url and name, as pyppeteer's.
+        self._known = page._engine.lifecycle.frame(frame_id)
+
+    def _current(self):
+        """The lifecycle's frame while it is attached, else the last one."""
+        frame = self._engine.lifecycle.frame(self._id)
+        if frame is not None:
+            self._known = frame
+        return self._known
 
     # ── identity ────────────────────────────────────────────────────────────
     @property
@@ -103,12 +113,11 @@ class Frame:
 
     @property
     def name(self) -> str:
-        return ""
+        return getattr(self._current(), "name", "") or ""
 
     @property
     def url(self) -> str:
-        frame = self._engine.lifecycle.frame(self._id)
-        return getattr(frame, "url", "") or ""
+        return getattr(self._current(), "url", "") or ""
 
     @property
     def parentFrame(self) -> Optional["Frame"]:
@@ -553,7 +562,10 @@ class Frame:
             # ⛔ A NAVIGATION DOES NOT END THE WAIT: pyppeteer's WaitTask runs
             # again in the new document. The predicate is sent once per turn,
             # and a world that went under it means the next turn asks the new
-            # document ([B285]).
+            # document ([B285]). A frame that is gone ends it, in pyppeteer's
+            # words (`WaitTask` on `_detach`).
+            if self._engine.lifecycle.frame(self._id) is None:
+                raise errors.PageError("waitForFunction failed: frame got detached.")
             try:
                 remote = self._evaluate_sync(pageFunction, args, by_value=False,
                                              force_expr=False)
@@ -1011,6 +1023,10 @@ class Page(EventEmitter):
             frame = self._frames.pop(frame_id, None)
             if frame is not None:
                 self.emit_threadsafe("framedetached", frame)
+        elif what == "sameDocument":
+            # pyppeteer emits `framenavigated` for a same-document
+            # navigation too (`_onFrameNavigatedWithinDocument`).
+            self.emit_threadsafe("framenavigated", self._frame(frame_id))
 
     def _navigation_response(self, navigation_id: Optional[str]) -> Optional[Response]:
         if not navigation_id:

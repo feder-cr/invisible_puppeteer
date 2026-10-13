@@ -196,3 +196,35 @@ def test_close_with_run_before_unload_asks_the_page(firefox_binary):
                                  r"the page has been closed\.$"):
             await page.close()
     _with_page(firefox_binary, 4265, body)
+
+
+def test_a_child_frame_lives_and_dies_as_pyppeteers(firefox_binary):
+    """A frame has its name; a same-document navigation is `framenavigated`;
+    a detached frame keeps its url, has no parent, and a wait on it ends with
+    pyppeteer's error."""
+    from invisible_puppeteer import errors
+
+    async def body(page, url):
+        await page.evaluate(
+            "() => new Promise(r => { const f = document.createElement('iframe');"
+            " f.id = 'f1'; f.name = 'theFrameName'; f.src = '/empty.html';"
+            " f.onload = r; document.body.appendChild(f); })")
+        frame = page.frames[1]
+        assert frame.name == "theFrameName"
+        navigated = []
+        page.on("framenavigated", navigated.append)
+        await page.evaluate("() => history.pushState({}, '', '/x')")
+        await asyncio.sleep(0.3)
+        assert page.mainFrame in navigated
+        waiting = asyncio.ensure_future(frame.waitForSelector(".never"))
+        await asyncio.sleep(0.3)
+        detached = []
+        page.on("framedetached", detached.append)
+        await page.evaluate("() => document.getElementById('f1').remove()")
+        await asyncio.sleep(0.3)
+        assert detached == [frame]
+        assert frame.isDetached() and frame.parentFrame is None
+        assert frame.url.endswith("/empty.html")
+        with pytest.raises(errors.PageError, match=r"^waitForFunction failed: frame got detached\.$"):
+            await asyncio.wait_for(waiting, 3)
+    _with_page(firefox_binary, 4266, body)
