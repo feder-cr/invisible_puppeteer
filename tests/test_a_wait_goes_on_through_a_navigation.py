@@ -9,6 +9,7 @@ twice.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -32,6 +33,10 @@ def test_a_turn_whose_world_went_is_asked_again():
 
     frame = Frame.__new__(Frame)
     frame._evaluate_sync = evaluate_sync
+    # A frame still attached: the wait asks the lifecycle on every turn.
+    frame._id = "F1"
+    frame._page = SimpleNamespace(_engine=SimpleNamespace(
+        lifecycle=SimpleNamespace(frame=lambda fid: object())))
     handle = asyncio.run(frame.waitForFunction(
         "() => window.ready", {"timeout": 5000, "polling": 10}))
     assert handle._remote == {"value": True}

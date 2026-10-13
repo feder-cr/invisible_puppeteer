@@ -13,11 +13,11 @@ import json
 import logging
 import mimetypes
 import time
+import urllib.parse
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 
 from . import _bridge, errors
 from ._events import EventEmitter
-from invisible_core.juggler import domain_matches, host_of
 from invisible_core.juggler.deadline import Deadline
 from invisible_core.juggler.injected import ContextDestroyed
 from invisible_core.juggler.lifecycle import NavigationError, NavigationInterrupted
@@ -65,6 +65,28 @@ def _state(options: dict) -> str:
             raise ValueError("Unknown value for options.waitUntil: %s" % name)
         states.append(_WAIT_UNTIL[name])
     return max(states, key=_ORDER.index)
+
+
+def _sent_to(cookie: dict, url: str) -> bool:
+    """Would this cookie be sent to `url`? RFC 6265 section 5.4, which is how
+    Chrome's `Network.getCookies` and `Network.deleteCookies` read a URL for
+    pyppeteer: a host-only cookie on its host alone and a domain cookie
+    (leading dot) on it and its subdomains; the path equal or a prefix that
+    ends at a '/'; a `secure` cookie only to https."""
+    parts = urllib.parse.urlsplit(url)
+    host = (parts.hostname or "").lower()
+    path = parts.path or "/"
+    domain = (cookie.get("domain") or "").lower()
+    if domain.startswith("."):
+        if host != domain[1:] and not host.endswith(domain):
+            return False
+    elif host != domain:
+        return False
+    cpath = cookie.get("path") or "/"
+    if path != cpath and not (path.startswith(cpath) and
+                              (cpath.endswith("/") or path[len(cpath)] == "/")):
+        return False
+    return not (cookie.get("secure") and parts.scheme != "https")
 
 
 class ExecutionContext:
@@ -1275,52 +1297,75 @@ class Page(EventEmitter):
 
     # ── cookies ─────────────────────────────────────────────────────────────
     async def cookies(self, *urls: str) -> List[Dict[str, Union[str, int, bool]]]:
-        """The cookies for these URLs (the page's URL when none is given)."""
+        """The cookies that would be sent to these URLs (the page's URL when
+        none is given), as Chrome's `Network.getCookies` answers pyppeteer:
+        by domain, path and `secure` (`_sent_to`)."""
         urls = urls or (self.url,)
-        engine_context = self._context._engine
-        all_cookies = await _bridge.run(engine_context.cookies)
+        all_cookies = await _bridge.run(self._context._engine.cookies)
         out = []
         for c in all_cookies:
-            for url in urls:
-                if domain_matches(c.get("domain") or "", host_of(url)):
-                    item = dict(c)
-                    item.setdefault("size", len(c.get("name", "")) + len(c.get("value", "")))
-                    out.append(item)
-                    break
+            if any(_sent_to(c, url) for url in urls):
+                item = dict(c)
+                item.setdefault("size", len(c.get("name", "")) + len(c.get("value", "")))
+                out.append(item)
         return out
 
     async def setCookie(self, *cookies: dict) -> None:
+        """pyppeteer's `setCookie`: a cookie with no `url` takes the page's
+        when the page is http(s); a blank page or a data: URL cannot have one;
+        each cookie is deleted first, as pyppeteer does, so on a page that is
+        not http(s) a cookie with neither url nor domain is that deletion's
+        protocol error."""
         page_url = self.url
         items = []
         for cookie in cookies:
             item = dict(cookie)
-            if "name" not in item or "value" not in item:
-                raise errors.PageError("A cookie needs a name and a value")
-            if not item.get("url") and not item.get("domain"):
-                if not page_url.startswith("http"):
-                    raise errors.PageError(
-                        'At least one of the url and domain needs to be specified')
+            if "url" not in item and page_url.startswith("http"):
                 item["url"] = page_url
-            if item.get("url") and item["url"].startswith("about:"):
-                raise errors.PageError('Blank page can not have cookie "%s"' % item["name"])
+            if item.get("url") == "about:blank":
+                raise errors.PageError('Blank page can not have cookie "%s"' % item.get("name", ""))
+            if (item.get("url") or "").startswith("data:"):
+                raise errors.PageError('Data URL page can not have cookie "%s"' % item.get("name", ""))
+            items.append(item)
+        await self.deleteCookie(*items)
+        writes = []
+        for item in items:
+            item = dict(item)
             # ⛔ A session cookie goes WITHOUT `expires`: Juggler turns -1 into
             # an expiry in 1969 and drops the cookie silently (70-known-bugs
             # [B224] in the workbench).
             if item.get("expires") in (None, -1):
                 item.pop("expires", None)
-            items.append(item)
-        await _bridge.run(self._context._engine.set_cookies, items)
+            writes.append(item)
+        if writes:
+            await _bridge.run(self._context._engine.set_cookies, writes)
 
     async def deleteCookie(self, *cookies: dict) -> None:
-        """Deletes cookies by expiring them: Juggler can only clear a whole
-        context, which is more than this call asks for."""
-        current = await self.cookies()
+        """pyppeteer's `deleteCookie`, as Chrome's `Network.deleteCookies`:
+        the cookies with this name that would be sent to `url` (the page's
+        when none is given and the page is http(s)), or with exactly this
+        `domain`, and with exactly this `path` when one is given. Deleted by
+        expiring them: Juggler can only clear a whole context, which is more
+        than this call asks for."""
+        page_url = self.url
+        current = None
         doomed = []
         for spec in cookies:
+            spec = dict(spec)
+            if not spec.get("url") and page_url.startswith("http"):
+                spec["url"] = page_url
+            if not spec.get("url") and not spec.get("domain"):
+                raise errors.NetworkError(
+                    "Protocol error (Network.deleteCookies): At least one of "
+                    "the url and domain needs to be specified")
+            if current is None:
+                current = await _bridge.run(self._context._engine.cookies)
             for c in current:
                 if c.get("name") != spec.get("name"):
                     continue
-                if spec.get("domain") and spec["domain"] != c.get("domain"):
+                if spec.get("url") and not _sent_to(c, spec["url"]):
+                    continue
+                if spec.get("domain") and (c.get("domain") or "").lstrip(".") != spec["domain"].lstrip("."):
                     continue
                 if spec.get("path") and spec["path"] != c.get("path"):
                     continue
