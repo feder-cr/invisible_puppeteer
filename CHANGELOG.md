@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-13
+
+The pin moves to invisible-core 44.39.0, which seals the firefox-44 engine.
+
+### Changed
+- **`waitUntil="networkidle2"` is pyppeteer's**: at most two requests in
+  flight for 500 ms. It waited for none, so a page that keeps two requests
+  open timed out.
+- **Navigation waits are decided as pyppeteer's `NavigatorWatcher`** in
+  `goto`, `waitForNavigation`, `reload`, `goBack` and `goForward`:
+  - a document that commits in place of the one asked for is waited on in
+    its place, and nothing raises; it was `PageError` "is interrupted by
+    another navigation";
+  - the answer is the response of the document the wait ended on, so after a
+    page replaced itself (`location.replace`) it is the final page's; it was
+    the first page's;
+  - the expected event is waited for on the child frames too, those that
+    started loading: `domcontentloaded` waits for an iframe's document, and
+    a lazy iframe out of view, which never starts, is not waited for.
+
+### Fixed
+- **On Linux, the line endings a page reads are Windows'**: a `Blob` or a
+  `File` made with `endings: "native"` turns `\n` into `\r\n`, and the text
+  of a selection across two blocks is joined by `\r\n`, as on Windows.
+- **`speechSynthesis.getVoices()` is Windows' list**: David, Mark, Zira and
+  the two Desktop voices, in that order, and none of them is the default.
+
 ## [0.5.0] - 2026-10-13
 
 The pin moves to invisible-core 43.39.0, which seals the firefox-43 engine:
