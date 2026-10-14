@@ -6,8 +6,8 @@ Firefox lets the page being left stop a navigation the browser started
 (document.open, window.stop, a location.replace, a form submit, an iframe
 navigating the top, history.back); pyppeteer's Chromium lets the browser's win
 over every one but going back (measured, `C:/tmp/b230/oracle_pyppeteer_class.py`,
-2026-10-14: goto answered on the page asked for in 1.5 s, and for back in
-0.3 s on the page gone back to). The engines differ, so what this client does
+2026-10-14: goto answered on the page asked for in 1.5 s, and for back at
+once on the page gone back to). The engines differ, so what this client does
 is pyppeteer's NavigatorWatcher rule on Firefox's events: a document that took
 the frame in place of the one asked for is waited on in its place, and its
 response is the answer; a stop with nothing in its place is PageError
@@ -17,7 +17,10 @@ Until firefox-46 the engine dropped the stop and took the page's
 document.write() for the navigation's commit: `goto` answered on the OLD page,
 or waited out its timeout. Same site (one process) and another site
 (`localhost`, a Fission process swap), twice, back to back; the page being left
-acts 300 ms after it loads, and the server holds the page asked for 1.5 s.
+acts once the server has the goto's request, and the server holds the page
+asked for 1.5 s, so the goto is on its way when the page acts on any machine.
+(It acted on a timer 300 ms after its load until a slow CI runner started the
+goto later than that: nothing was left to stop, and the goto landed.)
 """
 from __future__ import annotations
 
@@ -39,7 +42,7 @@ ACT = {
     "pushstate": "history.pushState({}, '', '/pushed');",
     "back": "history.back();",
     "submit": "document.getElementById('f').submit();",
-    "meta": None,
+    "meta": "const m = document.createElement('meta'); m.httpEquiv = 'refresh'; m.content = '0;url=/other?from=meta'; document.head.appendChild(m);",
     "iframe_top": None,
     "none": "",
 }
@@ -53,32 +56,50 @@ EXPECT = {
     "submit": ("followed", "/other?from=submit"),
     "iframe_top": ("followed", "/other?from=iframe"),
     "pushstate": ("landed", None),
-    "meta": ("landed", None),
+    #: The engine's race, not an answer of ours: [B305].
+    "meta": ("landed-or-refreshed", "/other?from=meta"),
     "none": ("landed", None),
 }
 
 
-def _old_page(kind):
-    if kind == "meta":
-        return ("<html><head><meta http-equiv=refresh content='0.3;url=/other?from=meta'>"
-                "</head><body><p>old</p></body></html>")
+#: The queries of the goto requests the server has had since it served the
+#: page being left with the same query.
+ARRIVED = set()
+
+
+def _when_the_goto_arrives(key, act):
+    """Script that asks the server every 50 ms whether the goto's request has
+    arrived, and runs `act` once it has."""
+    return ("const w = setInterval(() => fetch('/act?%s', {cache: 'no-store'})"
+            ".then(r => r.text()).then(t => { if (t === 'go') { clearInterval(w); %s } }),"
+            " 50);" % (key, act))
+
+
+def _old_page(kind, key):
     if kind == "iframe_top":
-        return ("<html><body><p>old</p><iframe srcdoc=\"<script>setTimeout(() => "
-                "{top.location = '/other?from=iframe'}, 300)</script>\"></iframe></body></html>")
-    return ("<html><body><p>old</p><form id=f action='/other' method=get>"
-            "<input name=from value=submit></form><script>setTimeout(() => {%s}, 300)"
-            "</script></body></html>" % ACT[kind])
+        inner = _when_the_goto_arrives(key, "top.location = '/other?from=iframe';")
+        return ("<html><body><p>old</p><iframe srcdoc=\"<script>%s</script>\"></iframe>"
+                "</body></html>" % inner.replace('"', "&quot;"))
+    return ("<html><head></head><body><p>old</p><form id=f action='/other' method=get>"
+            "<input name=from value=submit></form><script>%s</script></body></html>"
+            % _when_the_goto_arrives(key, ACT[kind]))
 
 
 def _serve():
     class H(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
-            path = self.path.split("?")[0]
+            path, _, query = self.path.partition("?")
             if path == "/new":
+                ARRIVED.add(query)
                 time.sleep(HELD_S)
                 body = "<html><body><p>new</p></body></html>"
+            elif path == "/act":
+                body = "go" if query in ARRIVED else "wait"
             elif path == "/old":
-                body = _old_page(self.path.split("k=")[1].split("&")[0])
+                # Both sites run with the same query: the page waits for a
+                # goto made after it was served.
+                ARRIVED.discard(query)
+                body = _old_page(query.split("k=")[1].split("&")[0], query)
             else:
                 body = "<html><body><p>%s</p></body></html>" % path
             body = body.encode()
@@ -142,6 +163,13 @@ def test_a_goto_stopped_on_its_way_raises_or_answers_where_it_is(firefox_binary,
                         if end == "/start":
                             expected = same + "/start?k=%s&i=%d" % (kind, i)
                         assert page.url == expected, where
+                    elif answer == "landed-or-refreshed":
+                        # The engine replays the queued refresh at random on
+                        # Linux and never on Windows ([B305]); either page is
+                        # accepted, the page being left never is.
+                        assert took >= HELD_S - 0.1, where
+                        assert page.url in (target, same + end), where
+                        assert page.url != same + "/old?k=%s&i=%d" % (kind, i), where
                     else:
                         assert took >= HELD_S - 0.1, where
                         assert page.url == target, where
