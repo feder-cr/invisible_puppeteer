@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-14
+
+The pin moves to invisible-core 47.39.0, which seals the firefox-47 engine.
+
+### Fixed
+- **A page can no longer tell that the engine carries the automation protocol.**
+  Every engine until firefox-47 registered the protocol as a chrome package named
+  `juggler`, and a page tells a registered package from an absent one with one
+  line, `new Worker("chrome://juggler/...")`: it returns on our engine and throws
+  `SecurityError` on Firefox. Captcha vendors started probing it in October 2026,
+  which is why a challenge solved by hand was still refused. firefox-47 loads the
+  protocol from `resource://gre/modules/juggler/`, a namespace every Firefox has
+  and inside which a page cannot tell which files exist; the engine now registers
+  exactly the chrome packages and resource substitutions Firefox 151 does.
+- **A `goto` the page stops on its way no longer answers on the old page, nor
+  waits out its timeout.** Stopped with nothing in its place
+  (`document.open()`, `window.stop()`), it raises PageError
+  "NS_BINDING_ABORTED at <url>" at once; replaced by another document, it
+  waits on that document, as pyppeteer's NavigatorWatcher does, and answers
+  with its response, so the answer always names the page it is on.
+- **The wheel is born before the page sees it**, as keys and mouse moves are
+  since 0.35.7: `event.timeStamp` was the instant the wheel reached the page,
+  0 to 2 ms below `performance.now()` in the handler where a real wheel is 6
+  to 14, and half of the wheel events failed the filter a tracker applies.
+
+### Not yet as the original
+- Firefox lets the page being left stop a navigation the browser started
+  (document.open, window.stop, location.replace, a form submit, an iframe
+  navigating the top); pyppeteer's Chromium lets the browser's navigation win
+  over all of them but going back, so there `goto` lands on the page asked
+  for. The engines differ, and this client answers with Firefox's events.
+
 ## [0.6.1] - 2026-10-13
 
 The pin moves to invisible-core 45.39.0, which seals the firefox-45 engine.
