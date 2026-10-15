@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-10-15
+
+The pin moves to invisible-core 47.40.0, on the same firefox-47 engine.
+
+### Fixed
+- **Closing a browser no longer closes the pipe of another browser in the
+  same process.** The connection closed its two descriptor numbers on
+  every call, and a released number goes to the next pipe the process
+  opens: a second close, or a write racing the close, could reach another
+  browser launched by the same script. The connection now releases each
+  end once and never touches the number again.
+
 ## [0.6.2] - 2026-10-14
 
 The pin moves to invisible-core 47.39.0, which seals the firefox-47 engine.
