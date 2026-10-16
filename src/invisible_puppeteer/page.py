@@ -19,7 +19,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Union
 from . import _bridge, errors
 from ._events import EventEmitter
 from invisible_core.juggler.deadline import Deadline
-from invisible_core.juggler.injected import ContextDestroyed
+from invisible_core.juggler.injected import ContextDestroyed, js_truthy
 from invisible_core.juggler.keyboard import UnknownKey
 from invisible_core.juggler.lifecycle import NavigationError
 from .element_handle import ElementHandle, JSHandle
@@ -615,7 +615,12 @@ class Frame:
                                              force_expr=False)
             except ContextDestroyed:
                 return None
-            if "objectId" in remote or _bridge.value_of(remote):
+            # ⛔ TRUTHY AS JAVASCRIPT JUDGES IT: invisible-core's `js_truthy`,
+            # the same judgement `wait_for_function` makes ([B323]). Judged on
+            # the value converted to Python, NaN came back as a float Python
+            # calls true and ended the wait, and `document.all`, the one falsy
+            # object, did too.
+            if js_truthy(remote):
                 return self._handle_from_remote(remote)
             return None
 

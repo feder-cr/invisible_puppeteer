@@ -41,3 +41,30 @@ def test_a_turn_whose_world_went_is_asked_again():
         "() => window.ready", {"timeout": 5000, "polling": 10}))
     assert handle._remote == {"value": True}
     assert len(sent) == 3
+
+def _frame_answering(answers, sent):
+    def evaluate_sync(page_function, args, *, by_value, force_expr):
+        sent.append(page_function)
+        return answers.pop(0)
+    frame = Frame.__new__(Frame)
+    frame._evaluate_sync = evaluate_sync
+    frame._id = "F1"
+    frame._page = SimpleNamespace(_engine=SimpleNamespace(
+        lifecycle=SimpleNamespace(frame=lambda fid: object())))
+    return frame
+
+
+def test_nan_and_document_all_are_falsy_and_an_object_ends_the_wait():
+    """Truthy as JavaScript judges it, through invisible-core's `js_truthy`
+    ([B323]): converted to Python, NaN was a float Python calls true and ended
+    the wait at once, and so did `document.all`, the one falsy object."""
+    node = {"objectId": "o1", "type": "object", "subtype": "array"}
+    answers = [{"unserializableValue": "NaN"},
+               {"objectId": "a1", "type": "undefined"},
+               node]
+    sent = []
+    frame = _frame_answering(answers, sent)
+    handle = asyncio.run(frame.waitForFunction(
+        "() => window.x", {"timeout": 5000, "polling": 10}))
+    assert handle._remote == node
+    assert len(sent) == 3
