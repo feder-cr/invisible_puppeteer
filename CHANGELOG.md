@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.7.2] - 2026-10-16
+## [0.7.2] - 2026-10-17
 
 The pin moves to invisible-core 48.43.0, still on the firefox-48 engine.
 
