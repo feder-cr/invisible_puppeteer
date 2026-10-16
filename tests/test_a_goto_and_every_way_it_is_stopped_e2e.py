@@ -124,6 +124,7 @@ def _serve():
     return srv, srv.server_address[1]
 
 
+@pytest.mark.wall_clock
 @pytest.mark.parametrize("kind", list(ACT))
 def test_a_goto_stopped_on_its_way_raises_or_answers_where_it_is(firefox_binary, kind):
     from invisible_puppeteer import errors, launch

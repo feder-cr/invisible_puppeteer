@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-16
+
+The pin moves to invisible-core 48.43.0, still on the firefox-48 engine.
+
+### Fixed
+- **The e2e tests that measure time run alone.** Nine of them assert an upper
+  bound on a wall-clock duration ("refused at once", "returns before the page
+  loads"), a bound that four browsers at once can cross with nothing wrong in
+  the engine. They carry the new `wall_clock` marker, and the core's e2e run
+  gives them the machine alone after the parallel tests.
+
 ## [0.7.1] - 2026-10-16
 
 The pin moves to invisible-core 48.42.0, on the same firefox-48 engine.

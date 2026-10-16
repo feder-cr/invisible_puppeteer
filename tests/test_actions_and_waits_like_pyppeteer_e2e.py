@@ -96,6 +96,7 @@ def _with_page(firefox_binary, seed, body):
 AT_ONCE_S = 2.5
 
 
+@pytest.mark.wall_clock
 def test_a_covered_element_is_clicked_where_it_is(firefox_binary):
     """No hit-target check: the press goes to the point, the overlay takes it."""
     async def body(page, url):
@@ -107,6 +108,7 @@ def test_a_covered_element_is_clicked_where_it_is(firefox_binary):
     _with_page(firefox_binary, 4248, body)
 
 
+@pytest.mark.wall_clock
 def test_a_disabled_button_is_clicked_without_an_error(firefox_binary):
     async def body(page, url):
         began = time.monotonic()
@@ -115,6 +117,7 @@ def test_a_disabled_button_is_clicked_without_an_error(firefox_binary):
     _with_page(firefox_binary, 4253, body)
 
 
+@pytest.mark.wall_clock
 def test_an_element_not_rendered_is_refused_at_once(firefox_binary):
     from invisible_puppeteer import errors
 
@@ -128,6 +131,7 @@ def test_an_element_not_rendered_is_refused_at_once(firefox_binary):
     _with_page(firefox_binary, 4254, body)
 
 
+@pytest.mark.wall_clock
 def test_a_detached_element_is_refused_at_once(firefox_binary):
     from invisible_puppeteer import errors
 
@@ -153,6 +157,7 @@ def test_an_element_below_the_fold_is_scrolled_to_the_centre(firefox_binary):
     _with_page(firefox_binary, 4256, body)
 
 
+@pytest.mark.wall_clock
 def test_history_and_navigation_waits_end_on_a_same_document_navigation(firefox_binary):
     async def body(page, url):
         await page.goto(url + "#a")
@@ -181,6 +186,7 @@ def test_a_history_timeout_is_an_error(firefox_binary):
     _with_page(firefox_binary, 4250, body)
 
 
+@pytest.mark.wall_clock
 def test_set_content_does_not_wait_for_load(firefox_binary):
     async def body(page, url):
         began = time.monotonic()
@@ -190,6 +196,7 @@ def test_set_content_does_not_wait_for_load(firefox_binary):
     _with_page(firefox_binary, 4251, body)
 
 
+@pytest.mark.wall_clock
 def test_wait_for_function_raises_the_predicates_error_and_checks_polling(firefox_binary):
     from invisible_puppeteer import errors
 
