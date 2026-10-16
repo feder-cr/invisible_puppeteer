@@ -2,11 +2,20 @@
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-16
+
+The pin moves to invisible-core 48.42.0, on the same firefox-48 engine.
+
 ### Fixed
 - **`waitForFunction` no longer ends on `NaN`.** The predicate's result was
   judged after conversion to Python, where NaN is true; it is now judged as
   JavaScript judges it, with the same rule as invisible-playwright's
   `wait_for_function`.
+- **A GeoIP database being downloaded is never read half-written.** Two
+  sessions starting together on a cold cache could have one open the database
+  while the other was still writing it, and fail with "Is this a valid MaxMind
+  DB file?". The core now extracts it outside the cache, checks it with the
+  real reader and moves it into place in one step (invisible-core 48.42.0).
 
 ## [0.7.0] - 2026-10-16
 
