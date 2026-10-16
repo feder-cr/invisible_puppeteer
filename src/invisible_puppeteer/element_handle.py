@@ -1,7 +1,9 @@
 """`JSHandle` and `ElementHandle`, with pyppeteer's methods.
 
 ⛔ TWO WORLDS, ON PURPOSE. A `JSHandle` from `evaluateHandle` is an object of
-the PAGE's world, because that is where the caller's code made it. An
+the CALLER's world, because that is where the caller's code made it (a world of
+its own since firefox-49, with the page's principal and the native standard
+APIs, [B322]). An
 `ElementHandle` is a node held in the UTILITY world, because every action on
 it goes through the engine's `Actions` - the pointer that travels, the press
 with a duration, the trusted input events - and those work on utility-world
@@ -64,14 +66,14 @@ class JSHandle:
         return self._frame._page._engine
 
     def _context(self) -> str:
-        return self._page.injected.main_context(self._frame._id)
+        return self._page.injected.caller_context(self._frame._id)
 
     def executionContext(self):
         return self._frame._execution_context
 
     async def getProperty(self, propertyName: str) -> "JSHandle":
         """The property as a handle. Like pyppeteer, this reads the property
-        in the page's world, where the object lives."""
+        in the world the object lives in, the caller's."""
         return await self._frame.evaluateHandle(
             "(object, propertyName) => object[propertyName]", self, propertyName)
 

@@ -6,8 +6,10 @@ and how a blocking engine call is run from asyncio.
 
 ⛔ WHERE THINGS RUN. Queries and element reads run in the UTILITY world
 (`__ctx_aux__`), which sees the DOM through an Xray: native methods, nothing a
-site's wrapped accessor can count. Only `evaluate` and friends run in the
-page's own world, because running code as the page is what they are for.
+site's wrapped accessor can count. Only `evaluate` and friends run outside
+it, in the CALLER's world, because they run the caller's code: there the
+page's own additions are visible, and the standard APIs are still the native
+ones ([B322]).
 """
 from __future__ import annotations
 
