@@ -19,11 +19,11 @@ effect where they describe Chromium's process management (``devtools``,
 from __future__ import annotations
 
 import asyncio
-import secrets
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from invisible_core import record_session_seed, resolve_session_seed
 from invisible_core import configure_proxy as _configure_proxy_shared
 from invisible_core import SessionLocale, persona_cookies, prepare_session_geo
 from invisible_core._fpforge import Profile, generate_profile
@@ -52,7 +52,9 @@ class _Session(_session.CommonLaunch):
                  locale, timezone, extra_prefs, binary_path, profile_dir,
                  prep_recaptcha, show_cursor, env_overrides, context_overrides):
         # `zoom.stealth.fpp.hw_seed` is int32_t, so the seed stays in int31.
-        self.seed: int = int(seed) if seed is not None else secrets.randbits(31)
+        # One place decides the seed, and a profile directory remembers it
+        # (invisible_core.resolve_session_seed, B314).
+        self.seed: int = resolve_session_seed(seed, profile_dir)
         self._pin = pin
         self._headless = headless
         self._proxy = proxy
@@ -108,6 +110,8 @@ class _Session(_session.CommonLaunch):
             env.update({k: str(v) for k, v in self._env_overrides.items()})
             if self._profile_dir is not None:
                 self._profile_dir.mkdir(parents=True, exist_ok=True)
+                # The profile is this machine from now on (B314).
+                record_session_seed(self._profile_dir, self.seed)
             browser = launch_engine(
                 str(executable), prefs=prefs,
                 profile_dir=str(self._profile_dir) if self._profile_dir else None,
