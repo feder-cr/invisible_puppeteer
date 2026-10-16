@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Fixed
+- **`waitForFunction` no longer ends on `NaN`.** The predicate's result was
+  judged after conversion to Python, where NaN is true; it is now judged as
+  JavaScript judges it, with the same rule as invisible-playwright's
+  `wait_for_function`.
+
 ## [0.7.0] - 2026-10-16
 
 The pin moves to invisible-core 48.41.0, on the firefox-48 engine.
