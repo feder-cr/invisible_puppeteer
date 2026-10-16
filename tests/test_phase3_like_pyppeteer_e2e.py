@@ -84,6 +84,7 @@ def _with_page(firefox_binary, seed, body):
         srv.shutdown()
 
 
+@pytest.mark.wall_clock
 def test_select_works_as_pyppeteers(firefox_binary):
     from invisible_puppeteer import errors
 
