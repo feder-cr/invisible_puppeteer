@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-17
+
+The pin moves to invisible-core 49.46.0. The desktop settings a page can read -
+scrollbars, text scale, drag threshold, double-click selection, the system
+colours in both schemes, the refresh rate, the form-control font and more -
+are declared by the persona instead of read from the machine it runs on, and
+each of them can be pinned (the keys are the ones invisible_playwright documents in its [pinning](https://github.com/feder-cr/invisible_playwright/blob/main/docs/pinning.md) page).
+
+### Changed
+- **The way in is uv.** The README installs with one complete block per
+  system: uv from its own installer, `uv init --python ">=3.11" my-project`,
+  `uv add invisible-puppeteer`, `uv run invisible-puppeteer fetch`. CONTRIBUTING teaches the same,
+  and CI refuses an install instruction that is not uv
+  (`python -m invisible_core.way_in`, core 49.45.0).
+- **A remedy this package prints is the command for your environment.** In a
+  venv uv made, which has no pip, a broken install was told to run
+  `pip install --force-reinstall invisible-puppeteer`; it is now told the uv command, and
+  an environment pip made is still told pip, through its own interpreter.
+
+### Fixed
+- CONTRIBUTING.md was a copy of invisible_playwright's: it cloned that
+  repository and described its API. It now describes this one.
+- Nothing ran the README's install block. A user-install workflow now runs it
+  as written, on Linux and Windows, and starts the browser from the project
+  it makes.
+
 ## [0.8.0] - 2026-10-17
 
 The pin moves to invisible-core 49.44.0, on the firefox-49 engine.

@@ -1,0 +1,112 @@
+# user-install.yml - can a person who has never seen this repo install it the
+# way the README says, and drive a browser, on the two operating systems we
+# claim to support?
+#
+# It runs tests/test_user_install_e2e.py, which runs the README's install block
+# for the runner's system as written (uv from its own installer, `uv init`,
+# `uv add` from the index, `fetch`) and then starts the browser from the project
+# it made. Until 2026-10-17 this repository had no such workflow, so nothing
+# executed its install instructions.
+#
+# WHY IT MUST NOT BE MADE TOLERANT. Between publishing the core and publishing
+# this package there is a window in which this cannot pass. A red run during a
+# publish is correct and readable; a tolerant one stays green long after.
+name: user-install
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly (Monday): the artifacts do not change, everything around them does.
+    - cron: "37 6 * * 1"
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: user-install-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install:
+    name: ${{ matrix.os }} - the README's install block, then a browser
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false      # one OS failing must not hide the other's result
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+
+      # Only what the TEST needs. The package under test is installed by the
+      # README's own lines, into the project they make.
+      - name: Test harness only
+        run: python -m pip install --upgrade pip pytest
+
+      # PyPI does not serve a new version the instant the upload finishes, and
+      # `release:` fires seconds after it. Bounded, and only on `release:`.
+      - name: wait for the index to serve this version
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, sys, time, tomllib, urllib.error, urllib.request
+          project = tomllib.load(open("pyproject.toml", "rb"))["project"]
+          url = f"https://pypi.org/pypi/{project['name']}/{project['version']}/json"
+          deadline = time.monotonic() + 300
+          while True:
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as r:
+                      if json.load(r).get("urls"):
+                          print("::notice::on the index")
+                          sys.exit(0)
+              except urllib.error.HTTPError as e:
+                  if e.code != 404:
+                      print(f"::warning::index returned HTTP {e.code}; not waiting further")
+                      sys.exit(0)
+              except OSError as e:
+                  print(f"index unreachable ({e}); retrying")
+              if time.monotonic() >= deadline:
+                  print("::warning::still not on the index after 300s; running anyway")
+                  sys.exit(0)
+              time.sleep(10)
+          PY
+
+      - name: Linux runtime libraries for the browser
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libdbus-glib-1-2 libasound2t64
+
+      - name: The user path, end to end
+        shell: bash
+        run: |
+          set -o pipefail   # or the tee below would swallow pytest's exit code
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            xvfb-run -a python -m pytest tests/test_user_install_e2e.py -m e2e \
+              -o addopts="" -v -rs | tee e2e-report.txt
+          else
+            python -m pytest tests/test_user_install_e2e.py -m e2e \
+              -o addopts="" -v -rs | tee e2e-report.txt
+          fi
+
+      # A run whose tests all SKIPPED is not a pass.
+      - name: Refuse a run in which nothing actually ran
+        shell: bash
+        run: |
+          python - <<'PY'
+          import pathlib, re, sys
+          text = pathlib.Path("e2e-report.txt").read_text(encoding="utf-8", errors="ignore")
+          m = re.search(r"(\d+) passed", text)
+          passed = int(m.group(1)) if m else 0
+          if passed < 3:
+              print(f"only {passed} of the 3 tests ran", file=sys.stderr)
+              sys.exit(1)
+          print(f"{passed} tests ran")
+          PY
