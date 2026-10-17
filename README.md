@@ -30,12 +30,31 @@ Anti-bots ask two questions, and reCAPTCHA, hCaptcha and Cloudflare Turnstile sc
 
 ## Install
 
-```bash
-pip install invisible-puppeteer
-python -m invisible_puppeteer fetch      # one-time download of the patched Firefox, sha256-verified
+Windows, in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+uv init --python ">=3.11" my-project
+cd my-project
+uv add invisible-puppeteer
+uv run invisible-puppeteer fetch
 ```
 
-Requires **Python 3.11 or newer**. Supported platforms: **Windows x86_64 / ARM64** (the x86_64 engine, under Windows' own emulation), **Linux x86_64 / arm64**.
+Linux:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+uv init --python ">=3.11" my-project
+cd my-project
+uv add invisible-puppeteer
+uv run invisible-puppeteer fetch
+```
+
+Supported platforms: **Windows x86_64 / ARM64** (the x86_64 engine, under Windows' own emulation), **Linux x86_64 / arm64**.
+
+Then save one of the examples below as `main.py` in `my-project` and run it with `uv run main.py`.
 
 ---
 
@@ -104,12 +123,7 @@ invisible-puppeteer version    # wrapper, core and engine versions
 
 ## Development
 
-```bash
-git clone https://github.com/feder-cr/invisible_puppeteer && cd invisible_puppeteer
-uv venv && uv pip install -e ".[dev]"
-uv run pytest -q                      # unit
-uv run pytest -q -m e2e               # against the real browser
-```
+The setup and the test commands are in [CONTRIBUTING.md](CONTRIBUTING.md#development-setup).
 
 ## License
 
