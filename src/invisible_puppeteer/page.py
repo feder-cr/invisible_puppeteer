@@ -173,9 +173,12 @@ class Frame:
     # ── evaluation ──────────────────────────────────────────────────────────
     def _evaluate_sync(self, page_function: str, args, *, by_value: bool,
                        force_expr: bool) -> dict:
-        """Run a page function in the page's world and return the raw result.
+        """Run a page function in the caller's world and return the raw result.
 
-        ⛔ THE CALLER'S FUNCTION IS THE ONLY CODE THAT RUNS IN THE PAGE. The
+        ⛔ THE CALLER'S FUNCTION IS THE ONLY CODE THAT RUNS OUTSIDE THE UTILITY
+        WORLD, and it runs in the caller's world ([B322]): the page's own
+        additions are visible there, its replacements of standard APIs are
+        not. The
         arguments go in as protocol values; an ElementHandle, which lives in
         the utility world, crosses with `Page.adoptNode`; the result is either
         serialized by the engine's sandbox (by value) or kept as a handle.
@@ -189,7 +192,7 @@ class Frame:
         inj = engine.injected
 
         def attempt():
-            ctx = inj.main_context(self._id)
+            ctx = inj.caller_context(self._id)
             owned: List[str] = []
             try:
                 if force_expr or not _bridge.is_jsfunc(page_function):
@@ -203,7 +206,7 @@ class Frame:
                             raise errors.ElementHandleError(
                                 "JSHandles can be evaluated only in the context "
                                 "they were created!")
-                        oid = inj.node_to_main(self._id, a._oid)
+                        oid = inj.node_to_caller(self._id, a._oid)
                         if not oid:
                             raise errors.ElementHandleError(
                                 "Node is detached from document")
@@ -239,12 +242,12 @@ class Frame:
         return await _bridge.run(run)
 
     def _handle_from_remote(self, remote: dict) -> JSHandle:
-        """A handle for a page-world RemoteObject. Blocking for a node, which is
+        """A handle for a caller-world RemoteObject. Blocking for a node, which is
         carried into the utility world; call it off the loop."""
         if remote.get("subtype") == "node" and remote.get("objectId"):
             inj = self._engine.injected
             adopted = inj.adopt(self._id, remote["objectId"])
-            inj.release(inj.main_context(self._id), remote["objectId"])
+            inj.release(inj.caller_context(self._id), remote["objectId"])
             if adopted:
                 return ElementHandle(self, adopted)
         return JSHandle(self, remote.get("objectId") or "", remote)
@@ -301,11 +304,12 @@ class Frame:
         `setContent` is the evaluation alone, and does not wait for the
         document's `load` (until 0.3.7 this did).
 
-        ⛔ Through `document.open/write/close` in the PAGE's world: Gecko wants
-        `document.open()` under the document's own principal, and the utility
-        world's extended principal is refused with "The operation is insecure"."""
+        ⛔ Through `document.open/write/close` in the caller's world, which has
+        the page's principal: Gecko wants `document.open()` under the
+        document's own principal, and the utility world's extended principal
+        is refused with "The operation is insecure"."""
         await _bridge.run(
-            self._engine.injected.evaluate_in_main,
+            self._engine.injected.evaluate_in_caller,
             self._id, "(() => { document.open(); document.write(%s);"
             " document.close(); })()" % json.dumps(html), by_value=True)
 

@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-17
+
+The pin moves to invisible-core 49.44.0, on the firefox-49 engine.
+
+### Changed
+- **Your code runs in a world of its own, where a page that replaced a
+  standard API cannot count your calls.** `evaluate`, `evaluateHandle`,
+  `waitForFunction`, `$eval` and `setContent` ran in the page's own
+  realm, so a call to `document.querySelector` went through whatever
+  the page had put in its place. They now run in a world with the
+  page's principal where a name the standard defines is the native one,
+  and every other name is the page's.
+  On what the page created (its classes, their instances, its plain objects)
+  the page's definitions win, `toString` and `valueOf` included, and an
+  object your code hands to the page keeps its identity and looks to the
+  page like its own (`instanceof Array` holds, its `constructor` is the
+  page's). What changes, and it is declared rather than accidental: a name
+  the standard defines for one of the browser's own objects wins even where
+  the page redefined it on that object itself (a setter the page put on one
+  input's `value` does not run; `.wrappedJSObject` gives the page's own
+  view); a bare assignment to an undeclared name creates a global of your
+  world, not of the page (`window.x = 1` still reaches the page); and your
+  code's own `eval` is not governed by the page's Content-Security-Policy,
+  which governs the page's (`window.eval`) as before. Needs firefox-49.
+
 ## [0.7.2] - 2026-10-17
 
 The pin moves to invisible-core 48.43.0, still on the firefox-48 engine.
