@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-18
+
+The pin moves to invisible-core 50.47.0, on the firefox-50 engine. From
+firefox-50 every realm, worker and worklet takes the session's zone from the
+engine's own override, so the launch no longer writes `TZ` into the browser's
+environment. On Windows no `TZ` could satisfy both the C runtime and ICU, so
+some zones showed the machine's time inside a Worker, and zones outside a
+ten-row table were never covered; that is gone with it.
+
+### Changed
+- The IANA-to-POSIX conversion is no longer imported or used. Code that took
+  `IANA_TO_POSIX_TZ` from the core has to stop: the core 50.47.0 removes it.
+
 ## [0.9.0] - 2026-10-18
 
 The pin moves to invisible-core 49.46.0. The desktop settings a page can read -
