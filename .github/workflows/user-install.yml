@@ -18,8 +18,15 @@ on:
   schedule:
     # Weekly (Monday): the artifacts do not change, everything around them does.
     - cron: "37 6 * * 1"
-  release:
-    types: [published]
+  # The ledger pull request, not `release: published` ([B347], core 50.48.0):
+  # the Release is created with GITHUB_TOKEN, and an event that token causes
+  # starts no other workflow, so on `release:` this job never ran at release
+  # time. The ledger PR exists only after the upload and `record`, and merging
+  # it waits for this run. `python -m invisible_core.install_job` checks the
+  # wiring (tests.yml).
+  pull_request:
+    paths:
+      - PUBLISHED.json
 
 permissions:
   contents: read
@@ -50,9 +57,10 @@ jobs:
         run: python -m pip install --upgrade pip pytest
 
       # PyPI does not serve a new version the instant the upload finishes, and
-      # `release:` fires seconds after it. Bounded, and only on `release:`.
+      # the ledger pull request opens seconds after it. Bounded, and only on the
+      # pull request.
       - name: wait for the index to serve this version
-        if: github.event_name == 'release'
+        if: github.event_name == 'pull_request'
         shell: bash
         run: |
           python - <<'PY'

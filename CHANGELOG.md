@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-19
+
+The pin moves to invisible-core 50.48.0, on the same firefox-50 engine.
+
+### Changed
+- **The user-install job runs on the ledger pull request**, not on
+  `release: published`, which never fired: the Release is created with
+  GITHUB_TOKEN, and an event that token causes starts no other workflow.
+  CI checks the wiring with `python -m invisible_core.install_job`.
+- The install test keeps out of the venv it builds every variable the core's
+  library reads, as `invisible_core.install_job.LEAKS` lists them: an engine
+  folder, a seal file or a GitHub token in the caller's shell no longer
+  changes what it measures.
+- The publish workflow checks the version and the ledger against the index
+  before it uploads (`invisible_core.release check --verify-index`), as the
+  pre-push hook does: a clone without the hook can no longer skip it.
+
 ## [0.10.0] - 2026-10-18
 
 The pin moves to invisible-core 50.47.0, on the firefox-50 engine. From
