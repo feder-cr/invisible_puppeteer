@@ -38,7 +38,17 @@ _INSTALLER = {"nt": "astral.sh/uv/install.ps1", "posix": "astral.sh/uv/install.s
 #: Nothing that points at a checkout crosses into the project: with
 #: PYTHONPATH on this tree the project's python imports the checkout, not the
 #: copy the index served (measured on the core's own user path, 2026-10-17).
-_LEAKS = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "INVISIBLE_SEAL_FILE")
+#: A copy of `invisible_core.install_job.LEAKS` (the interpreter's variables
+#: and every variable the core's library reads), which this file cannot
+#: import; the core's install_job gate checks that it covers it ([B349]).
+_LEAKS = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV",
+          "INVISIBLE_PLAYWRIGHT_ENGINE_DIR", "INVISIBLE_PLAYWRIGHT_CACHE_DIR",
+          "INVISIBLE_DOWNLOAD_DEADLINE", "STEALTHFOX_GITHUB_TOKEN", "GITHUB_TOKEN",
+          "INVISIBLE_SEAL_FILE", "INVISIBLE_CORE_PIN", "INVISIBLE_CORE_AUTOFIX",
+          "INVISIBLE_CORE_AUTOFIX_TIMEOUT", "UV", "STEALTHFOX_GEOIP_MMDB",
+          "STEALTHFOX_FONT_MANIFEST", "STEALTHFOX_WEBRTC_PUBLIC_IP",
+          "INVPW_CURSOR_TIMER", "INVISIBLE_CORE_AUTOFIX_ATTEMPTED",
+          "INVPW_SESSION_TOKEN", "INVPW_DESKTOP", "STEALTHFOX_WEBRTC_DISABLE_IPV6")
 
 
 def _run(cmd, *, timeout: int = 600, env=None, cwd=None):
