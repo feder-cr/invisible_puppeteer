@@ -28,6 +28,16 @@ on:
 permissions:
   contents: read
 
+# One publish at a time per ref. Two runs started by the same tag (a delayed
+# delivery, or a dispatch plus the push) would both pass the already-published
+# check before either had uploaded, and both would upload. Serialised, the
+# second waits for the first and then finds the version on the index, so it
+# ends as a no-op. Never cancelled in progress: an upload that has started
+# must be allowed to finish.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # Asked of the INDEX, first, because a tag can legitimately name a version that
   # is already published: a tag backfilled for a hand-published release, a tag
