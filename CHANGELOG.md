@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-21
+
+The pin moves to invisible-core 51.48.0, which brings the firefox-51 engine
+(Firefox 151.0).
+
+### Changed
+- invisible-core 50.48.0 -> 51.48.0. The canvas noise now spares two-colour
+  blends (`edge_tolerance` replaces `edge_step` in the core).
+
 ## [0.11.0] - 2026-10-19
 
 The pin moves to invisible-core 50.48.0, on the same firefox-50 engine.
