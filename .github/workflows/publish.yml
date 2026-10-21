@@ -28,14 +28,16 @@ on:
 permissions:
   contents: read
 
-# One publish at a time per ref. Two runs started by the same tag (a delayed
-# delivery, or a dispatch plus the push) would both pass the already-published
-# check before either had uploaded, and both would upload. Serialised, the
-# second waits for the first and then finds the version on the index, so it
-# ends as a no-op. Never cancelled in progress: an upload that has started
-# must be allowed to finish.
+# One publish at a time per repository, whatever started it and on whatever
+# ref. Two runs of one tag (a delayed delivery, or a dispatch plus the push)
+# would both pass the already-published check before either had uploaded, and
+# both would upload. Keyed on the ref, a dispatch on a branch and a push of the
+# tag would not wait for each other, so the group is the workflow alone.
+# Serialised, the second run waits for the first and then finds the version on
+# the index, so it ends as a no-op. Never cancelled in progress: an upload that
+# has started must be allowed to finish.
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish
   cancel-in-progress: false
 
 jobs:
