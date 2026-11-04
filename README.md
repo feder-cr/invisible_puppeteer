@@ -52,7 +52,7 @@ uv add invisible-puppeteer
 uv run invisible-puppeteer fetch
 ```
 
-Supported platforms: **Windows x86_64 / ARM64** (the x86_64 engine, under Windows' own emulation), **Linux x86_64 / arm64**.
+Supported platforms: **Windows x86_64 / ARM64** (the x86_64 engine, under Windows' own emulation), **Linux x86_64**. Linux arm64 is no longer supported from firefox-56 (firefox-55 is the last engine built for it).
 
 Then save one of the examples below as `main.py` in `my-project` and run it with `uv run main.py`.
 
