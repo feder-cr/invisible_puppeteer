@@ -38,7 +38,7 @@ uv pip install -e ".[dev]"
 invisible-puppeteer fetch   # download the patched Firefox binary
 ```
 
-One of: Windows x86_64, Linux x86_64 / arm64.
+One of: Windows x86_64, Linux x86_64.
 
 ## Running tests
 

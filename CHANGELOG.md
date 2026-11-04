@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Removed
+- **Linux arm64.** No engine is built for it from firefox-56 on (firefox-55 is the
+  last); the core tells such a host which release to stay on. Windows on ARM64
+  keeps the x86_64 engine, under Windows' own emulation.
+
 ## [0.12.0] - 2026-10-21
 
 The pin moves to invisible-core 51.48.0, which brings the firefox-51 engine
